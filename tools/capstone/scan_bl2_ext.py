@@ -7,23 +7,17 @@ Locates SPSR privilege drop sites, memory reservation pools (vm-BL33-reserved, v
 and the handoff branch to ARM Trusted Firmware (ATF BL31).
 """
 
+import os
 import sys
 import struct
 import capstone
 
-DEFAULT_BL2_EXT_LOAD_VIRT = 0xFFFF000062F00000
+TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, TOOLS_DIR)
 
-def find_string_offset(data, text):
-    needle = text.encode("utf-8") if isinstance(text, str) else text
-    offsets = []
-    pos = 0
-    while True:
-        idx = data.find(needle, pos)
-        if idx == -1:
-            break
-        offsets.append(idx)
-        pos = idx + len(needle)
-    return offsets
+from common import find_string_offsets, DEFAULT_LOAD_VIRT
+
+DEFAULT_BL2_EXT_LOAD_VIRT = DEFAULT_LOAD_VIRT["bl2_ext"]
 
 def scan_bl2_ext(binary_path, base_virt=DEFAULT_BL2_EXT_LOAD_VIRT):
     with open(binary_path, "rb") as f:
@@ -63,7 +57,7 @@ def scan_bl2_ext(binary_path, base_virt=DEFAULT_BL2_EXT_LOAD_VIRT):
 
     print("[+] Scanning String Anchors:")
     for label, text in anchors:
-        hits = find_string_offset(data, text)
+        hits = find_string_offsets(data, text)
         if hits:
             print(f"    -> {label:<22} ('{text}'): {len(hits)} occurrences (first at file offset 0x{hits[0]:06X})")
 

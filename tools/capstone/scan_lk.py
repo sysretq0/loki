@@ -7,24 +7,17 @@ Locates critical functions, hooks, and register access patterns in a raw Little 
 ARM64 binary without requiring heavy reverse-engineering suites.
 """
 
+import os
 import sys
 import struct
 import capstone
-from capstone import arm64
 
-DEFAULT_LK_LOAD_VIRT = 0xFFFF000050F00000
+TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, TOOLS_DIR)
 
-def find_string_offset(data, text):
-    needle = text.encode("utf-8") if isinstance(text, str) else text
-    offsets = []
-    pos = 0
-    while True:
-        idx = data.find(needle, pos)
-        if idx == -1:
-            break
-        offsets.append(idx)
-        pos = idx + len(needle)
-    return offsets
+from common import find_string_offsets, DEFAULT_LOAD_VIRT
+
+DEFAULT_LK_LOAD_VIRT = DEFAULT_LOAD_VIRT["lk"]
 
 def scan_lk(binary_path, base_virt=DEFAULT_LK_LOAD_VIRT):
     with open(binary_path, "rb") as f:
@@ -95,7 +88,7 @@ def scan_lk(binary_path, base_virt=DEFAULT_LK_LOAD_VIRT):
 
     print("\n[+] Scanning String Anchors:")
     for key, text in anchors:
-        hits = find_string_offset(data, text)
+        hits = find_string_offsets(data, text)
         if hits:
             print(f"    -> Anchor '{text}': {len(hits)} occurrences (first at file offset 0x{hits[0]:06X})")
 

@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """
-gen_header.py — Automatic C Header Generator from Device JSON Symbol Maps
+gen_header.py — Automatic C Header & Disassembly Script Generator
 
-Generates a standalone, drift-free C header (.h) directly from a device definition
-JSON file (.json), ensuring 100% consistency with zero manual duplication.
+Generates standalone, drift-free C headers (.h), Radare2 scripts (.r2), and Rizin
+scripts (.rz) directly from device JSON symbol maps, ensuring 100% consistency
+with zero manual duplication across the entire reverse-engineering suite.
 """
 
 import os
 import sys
 import json
 import re
+import argparse
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def generate_header(json_path, out_h_path=None):
     with open(json_path, "r", encoding="utf-8") as f:
@@ -105,46 +109,45 @@ def generate_header(json_path, out_h_path=None):
     # Symbols: AEE
     aee_syms = symbols.get("aee", {})
     if aee_syms:
-        lines.append("/* --- Stock Exception Engine (AEE / kedump) --- */")
+        lines.append("/* --- Stock Exception Engine (AEE) Verified Functions --- */")
         for sym_name, sym_info in aee_syms.items():
             addr = sym_info["addr"]
-            lines.append(f"#define ADDR_AEE_{sym_name.upper():<28} {addr}ULL")
+            u = sym_name.upper()
+            lines.append(f"#define ADDR_AEE_{u:<28} {addr}ULL")
         lines.append("")
 
-    # Registers
-    regs = data.get("registers", {})
-    if regs:
-        lines.append("/* --- SoC Hardware Peripherals & MMIO --- */")
-        for reg_name, reg_val in regs.items():
-            lines.append(f"#define {reg_name:<28} {reg_val}ULL")
+    # MMIO Registers
+    registers = data.get("registers", {})
+    if registers:
+        lines.append("/* --- Physical MMIO Hardware Register Addresses --- */")
+        for reg_name, reg_addr in registers.items():
+            lines.append(f"#define {reg_name:<28} {reg_addr}ULL")
         lines.append("")
 
     # Keycodes
     keycodes = data.get("keycodes", {})
     if keycodes:
-        lines.append("/* --- Keypad & Input Keycodes --- */")
-        for k_name, k_val in keycodes.items():
-            lines.append(f"#define KEY_{k_name:<24} {k_val}")
+        lines.append("/* --- Hardware Keycode Mappings (detect_key) --- */")
+        for key_name, key_id in keycodes.items():
+            lines.append(f"#define KEY_{key_name:<24} {key_id}")
         lines.append("")
 
     # Zero Regions
     zero_regs = data.get("zero_regions", {}).get("lk", {})
     if zero_regs:
         lines.append("/* --- Zero-Filled (.text) Executable Padding Regions (No Dead Code Reuse) --- */")
-        for z_name, z_info in zero_regs.items():
-            f_ofs = z_info["file_offset"]
-            v_start = z_info["addr_start"]
-            sz = z_info["size_bytes"]
-            lines.append(f"/* {z_name}: {z_info.get('desc', '')} ({sz:,} bytes pure 0x00) */")
-            lines.append(f"#define {z_name}_OFFSET         {f_ofs}ULL")
-            lines.append(f"#define {z_name}_VIRT           {v_start}ULL")
-            lines.append(f"#define {z_name}_SIZE           {sz}ULL")
-            if "recommended_hook_addr" in z_info:
-                lines.append(f"#define PROOF_HOOK_TARGET_VIRT       {z_info['recommended_hook_addr']}ULL")
+        for reg_name, reg_info in zero_regs.items():
+            desc = reg_info.get("desc", "")
+            lines.append(f"/* {reg_name}: {desc} */")
+            lines.append(f"#define {reg_name}_OFFSET         {reg_info['file_offset']}ULL")
+            lines.append(f"#define {reg_name}_VIRT           {reg_info['addr_start']}ULL")
+            lines.append(f"#define {reg_name}_SIZE           {reg_info['size_bytes']}ULL")
+            if "recommended_hook_addr" in reg_info:
+                lines.append(f"#define PROOF_HOOK_TARGET_VIRT       {reg_info['recommended_hook_addr']}ULL")
             lines.append("")
 
     # Unallocated Flash
-    unalloc = data.get("unallocated_flash", {})
+    unalloc = data.get("unallocated_flash")
     if unalloc:
         lines.append("/* --- Container Flash Partition Free Space (lk.img) --- */")
         lines.append(f"#define UNALLOCATED_FLASH_OFFSET     {unalloc['offset_start']}ULL")
@@ -195,14 +198,117 @@ def generate_header(json_path, out_h_path=None):
         print(output_content)
     return output_content
 
-def main():
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <path/to/device.json> [output_path.h]")
-        sys.exit(1)
+def generate_r2_script(json_path, out_r2_path=None):
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-    json_path = sys.argv[1]
-    out_h = sys.argv[2] if len(sys.argv) > 2 else json_path.replace(".json", ".h")
-    generate_header(json_path, out_h)
+    device_name = data.get("device", "Unknown Device")
+    fw_ver = data.get("firmware_version", "v1")
+    lk_base = data.get("subpartitions", {}).get("lk", {}).get("load_addr", "0xffff000050f00000").lower()
+
+    lines = [
+        "# lk_map.r2 — Radare2 Analysis Script for MediaTek Little Kernel (LK / BL33)",
+        f"# Target: {device_name} (Firmware Baseline {fw_ver})",
+        f"# Usage: r2 -i {os.path.basename(out_r2_path) if out_r2_path else 'lk_map.r2'} -B {lk_base} 00_lk.bin",
+        "",
+        "e asm.arch = arm",
+        "e asm.bits = 64",
+        "e asm.cpu = armv8.2-a",
+        "e io.va = true",
+        "",
+        "# Verified function entry point symbols",
+    ]
+
+    symbols = data.get("symbols", {}).get("lk", {})
+    for sym_name, sym_info in symbols.items():
+        addr = sym_info["addr"].lower()
+        clean_name = "lk_entry" if sym_name == "_start" else sym_name
+        lines.append(f"f sym.{clean_name:<26} = {addr}")
+
+    lines.extend([
+        "",
+        "# Disassemble kmain by default",
+        "s sym.kmain",
+        "pdf",
+        ""
+    ])
+
+    content = "\n".join(lines)
+    if out_r2_path:
+        with open(out_r2_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        print(f"[+] Radare2 script generated: {out_r2_path}")
+    return content
+
+def generate_rizin_script(json_path, out_rz_path=None):
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    device_name = data.get("device", "Unknown Device")
+    fw_ver = data.get("firmware_version", "v1")
+    lk_base = data.get("subpartitions", {}).get("lk", {}).get("load_addr", "0xffff000050f00000").lower()
+
+    lines = [
+        "# lk_map.rz — Rizin Analysis Script for MediaTek Little Kernel (LK / BL33)",
+        f"# Target: {device_name} (Firmware Baseline {fw_ver})",
+        f"# Usage: rz -i {os.path.basename(out_rz_path) if out_rz_path else 'lk_map.rz'} -m {lk_base} 00_lk.bin",
+        "",
+        "e asm.arch = arm",
+        "e asm.bits = 64",
+        "e asm.cpu = armv8.2-a",
+        "e io.va = true",
+        "",
+        "# Verified function entry point symbols",
+    ]
+
+    symbols = data.get("symbols", {}).get("lk", {})
+    for sym_name, sym_info in symbols.items():
+        addr = sym_info["addr"].lower()
+        clean_name = "lk_entry" if sym_name == "_start" else sym_name
+        lines.append(f"f sym.{clean_name:<26} = {addr}")
+
+    lines.extend([
+        "",
+        "# Disassemble kmain by default",
+        "s sym.kmain",
+        "pdf",
+        ""
+    ])
+
+    content = "\n".join(lines)
+    if out_rz_path:
+        with open(out_rz_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        print(f"[+] Rizin script generated: {out_rz_path}")
+    return content
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate C headers (.h), Radare2 (.r2), and Rizin (.rz) scripts from device JSON"
+    )
+    parser.add_argument("device", help="Path to device JSON file")
+    parser.add_argument("-o", "--output", help="Output C header file (default: replaces .json with .h)")
+    parser.add_argument("--r2", help="Output Radare2 script path (.r2)")
+    parser.add_argument("--rz", help="Output Rizin script path (.rz)")
+    parser.add_argument("--all", action="store_true", help="Generate header and update repository r2 and rizin scripts")
+    args = parser.parse_args()
+
+    out_h = args.output or args.device.replace(".json", ".h")
+    generate_header(args.device, out_h)
+
+    r2_path = args.r2
+    rz_path = args.rz
+
+    if args.all:
+        if not r2_path:
+            r2_path = os.path.join(REPO_ROOT, "tools", "radare2", "lk_map.r2")
+        if not rz_path:
+            rz_path = os.path.join(REPO_ROOT, "tools", "rizin", "lk_map.rz")
+
+    if r2_path:
+        generate_r2_script(args.device, r2_path)
+    if rz_path:
+        generate_rizin_script(args.device, rz_path)
 
 if __name__ == "__main__":
     main()

@@ -22,6 +22,18 @@ import hashlib
 import struct
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TOOLS_DIR = os.path.join(REPO_ROOT, "tools")
+sys.path.insert(0, TOOLS_DIR)
+
+from common import (
+    locate_firmware_image,
+    parse_mkimg_header,
+    decode_aarch64_branch_target,
+    is_aarch64_bl,
+    MKIMG_MAGIC,
+    MKIMG_HDR_SIZE,
+)
+
 SCHEMA_PATH = os.path.join(REPO_ROOT, "schema", "device.schema.json")
 DEVICES_DIR = os.path.join(REPO_ROOT, "devices")
 
@@ -168,13 +180,14 @@ def verify_binary(data, lk_img_path):
     for sub_id in ["lk", "bl2_ext", "aee", "dtb"]:
         sub = data["subpartitions"][sub_id]
         hdr_ofs = int(sub.get("header_offset", sub["offset"]), 16)
-        magic, dsize = struct.unpack_from("<II", img_bytes, hdr_ofs)
-        assert magic == 0x58881688, f"Invalid mkimg magic at 0x{hdr_ofs:06X} for {sub_id}"
+        hdr = parse_mkimg_header(img_bytes, hdr_ofs)
+        assert hdr is not None, f"Could not parse mkimg header at 0x{hdr_ofs:06X} for {sub_id}"
+        assert hdr.magic == MKIMG_MAGIC, f"Invalid mkimg magic at 0x{hdr_ofs:06X} for {sub_id}"
         expected_size = sub["size_bytes"]
-        assert dsize == expected_size, (
-            f"mkimg dsize mismatch for {sub_id}: header=0x{dsize:X} ({dsize}), expected=0x{expected_size:X} ({expected_size})"
+        assert hdr.payload_size == expected_size, (
+            f"mkimg dsize mismatch for {sub_id}: header=0x{hdr.payload_size:X} ({hdr.payload_size}), expected=0x{expected_size:X} ({expected_size})"
         )
-        print(f"      [{sub_id:>11}] Header @ 0x{hdr_ofs:06X} -> Payload: 0x{hdr_ofs+512:06X}..0x{hdr_ofs+512+dsize:06X} ({dsize:,} bytes)")
+        print(f"      [{sub_id:>11}] Header @ 0x{hdr_ofs:06X} -> Payload: 0x{hdr.payload_offset:06X}..0x{hdr.payload_offset+hdr.payload_size:06X} ({hdr.payload_size:,} bytes)")
 
     # 3. Extract 00_lk.bin payload
     lk_sub = data["subpartitions"]["lk"]
@@ -226,40 +239,14 @@ def verify_binary(data, lk_img_path):
             elif hook_info["type"] == "bl_opcode_patch":
                 expected_target = int(hook_info["stock_target"], 16)
                 ins_word = struct.unpack_from("<I", lk_bin, target_ofs)[0]
-                assert (ins_word & 0xFC000000) == 0x94000000, f"Expected BL instruction at 0x{target_va:016X}"
-                imm26 = ins_word & 0x03FFFFFF
-                if imm26 & 0x02000000: imm26 -= 0x04000000
-                branch_target = target_va + (imm26 << 2)
+                assert is_aarch64_bl(ins_word), f"Expected BL instruction at 0x{target_va:016X}"
+                branch_target = decode_aarch64_branch_target(ins_word, target_va)
                 assert branch_target == expected_target, (
                     f"BL branch target mismatch for {hook_name}: actual=0x{branch_target:016X}, expected=0x{expected_target:016X}"
                 )
                 print(f"      [{hook_name}] Validated BL opcode @ 0x{target_va:016X} -> 0x{branch_target:016X}")
 
     print("    -> All binary assertions verified successfully.")
-
-def locate_firmware_image():
-    # 1. Command-line argument
-    if len(sys.argv) > 1:
-        if os.path.exists(sys.argv[1]):
-            return sys.argv[1]
-        print(f"[!] Warning: Specified firmware '{sys.argv[1]}' not found.")
-        return None
-    # 2. Environment variable
-    env_fw = os.environ.get("LOKI_FIRMWARE_IMG")
-    if env_fw:
-        if os.path.exists(env_fw):
-            return env_fw
-        print(f"[!] Warning: LOKI_FIRMWARE_IMG='{env_fw}' not found.")
-        return None
-    # 3. Known repository/convenience locations
-    candidates = [
-        os.path.join(REPO_ROOT, "firmware", "lk.img"),
-        "/work/firmware/advan_x1/lk.img"
-    ]
-    for c in candidates:
-        if os.path.exists(c):
-            return c
-    return None
 
 def main():
     print("=" * 64)
@@ -271,7 +258,7 @@ def main():
         print("[!] No device JSON profiles found in devices/")
         sys.exit(1)
 
-    target_fw = locate_firmware_image()
+    target_fw = locate_firmware_image(sys.argv[1] if len(sys.argv) > 1 else None, REPO_ROOT)
 
     for json_path in device_files:
         data = verify_device(json_path)

@@ -4,18 +4,21 @@
 PYTHON ?= python3
 LOKI   ?= ./loki
 
-.PHONY: all help verify proof deadcode devices gen-header clean
+.PHONY: all help test verify proof deadcode devices gen-header clean
 
 all: verify proof deadcode
+
+test: all
 
 help:
 	@echo "Loki Build & Verification Targets:"
 	@echo "  make               Run full validation suite (verify, proof, deadcode)"
+	@echo "  make test          Alias for make all"
 	@echo "  make verify        Validate schemas, headers, and firmware consistency"
 	@echo "  make proof         Build & verify 164-byte proof hook placement"
 	@echo "  make deadcode      Scan hardware strapping & dead-code caves"
 	@echo "  make devices       List all mapped device profiles"
-	@echo "  make gen-header    Regenerate C header (pass DEVICE=path/to/device.json)"
+	@echo "  make gen-header    Regenerate C header & disasm scripts (pass DEVICE=path/to/device.json)"
 	@echo "  make clean         Clean build artifacts and bytecode caches"
 	@echo ""
 	@echo "Environment overrides:"
@@ -39,8 +42,8 @@ gen-header:
 		echo "Usage: make gen-header DEVICE=devices/mt6789/advan_x1_v5.json"; \
 		exit 1; \
 	fi
-	@$(PYTHON) tools/gen_header.py $(DEVICE)
+	@$(PYTHON) tools/gen_header.py $(DEVICE) --all
 
 clean:
-	@rm -rf build __pycache__ tools/__pycache__ tools/proof/__pycache__ tools/capstone/__pycache__
+	@rm -rf build extracted __pycache__ tools/__pycache__ tools/proof/__pycache__ tools/capstone/__pycache__ tools/pyghidra/__pycache__
 

@@ -94,10 +94,10 @@
 #define ADDR_BL2_EXT_ATF_HANDOFF_JUMP 0xFFFF000062F0C108ULL
 #define ADDR_BL2_EXT_ATF_JUMP        ADDR_BL2_EXT_ATF_HANDOFF_JUMP
 
-/* --- Stock Exception Engine (AEE / kedump) --- */
+/* --- Stock Exception Engine (AEE) Verified Functions --- */
 #define ADDR_AEE_KEDUMP_INIT                  0xFFFF000063F01000ULL
 
-/* --- SoC Hardware Peripherals & MMIO --- */
+/* --- Physical MMIO Hardware Register Addresses --- */
 #define MT6789_WDT_BASE              0x10007000ULL
 #define MT6789_WDT_MODE              0x10007000ULL
 #define MT6789_WDT_LENGTH            0x10007004ULL
@@ -112,24 +112,24 @@
 #define FRAMEBUFFER_PHYS_0           0xFE007000ULL
 #define FRAMEBUFFER_PHYS_1           0xFEA41000ULL
 
-/* --- Keypad & Input Keycodes --- */
+/* --- Hardware Keycode Mappings (detect_key) --- */
 #define KEY_VOL_DOWN                 1
 #define KEY_VOL_UP                   6
 #define KEY_POWER                    8
 
 /* --- Zero-Filled (.text) Executable Padding Regions (No Dead Code Reuse) --- */
-/* ZERO_REGION_1: Linker alignment padding before VBAR_EL1 vector table in .text segment (3,272 bytes pure 0x00) */
+/* ZERO_REGION_1: Linker alignment padding before VBAR_EL1 vector table in .text segment */
 #define ZERO_REGION_1_OFFSET         0x000338ULL
 #define ZERO_REGION_1_VIRT           0xFFFF000050F00338ULL
 #define ZERO_REGION_1_SIZE           3272ULL
 #define PROOF_HOOK_TARGET_VIRT       0xFFFF000050F00340ULL
 
-/* ZERO_REGION_2: Linker alignment padding after VBAR_EL1 vector table in .text segment (2,948 bytes pure 0x00) */
+/* ZERO_REGION_2: Linker alignment padding after VBAR_EL1 vector table in .text segment */
 #define ZERO_REGION_2_OFFSET         0x00187CULL
 #define ZERO_REGION_2_VIRT           0xFFFF000050F0187CULL
 #define ZERO_REGION_2_SIZE           2948ULL
 
-/* ZERO_REGION_3: Linker alignment padding at end of .text segment (3,607 bytes pure 0x00) */
+/* ZERO_REGION_3: Linker alignment padding at end of .text segment */
 #define ZERO_REGION_3_OFFSET         0x0741E9ULL
 #define ZERO_REGION_3_VIRT           0xFFFF000050F741E9ULL
 #define ZERO_REGION_3_SIZE           3607ULL

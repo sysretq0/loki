@@ -18,12 +18,7 @@ TOOLS_DIR = os.path.join(REPO_ROOT, "tools")
 sys.path.insert(0, TOOLS_DIR)
 
 from gen_header import generate_header
-
-DEFAULT_LOAD_VIRT = {
-    "lk": 0xFFFF000050F00000,
-    "bl2_ext": 0xFFFF000062F00000,
-    "aee": 0xFFFF000063F00000
-}
+from common import iter_mkimg_headers, DEFAULT_LOAD_VIRT, MKIMG_HDR_SIZE
 
 def scaffold_device(codename, soc, lk_img_path, out_dir=None):
     if not os.path.exists(lk_img_path):
@@ -42,33 +37,22 @@ def scaffold_device(codename, soc, lk_img_path, out_dir=None):
 
     # 1. Parse subpartitions from mkimg headers
     subparts = {}
-    pos = 0
-    while pos < len(img_bytes):
-        if pos + 512 <= len(img_bytes) and struct.unpack_from("<I", img_bytes, pos)[0] == 0x58881688:
-            magic, dsize = struct.unpack_from("<II", img_bytes, pos)
-            name_raw = img_bytes[pos + 8 : pos + 40]
-            name = name_raw.split(b"\x00")[0].decode("ascii", errors="replace").strip()
-            
-            if name in ("lk", "bl2_ext", "aee", "lk_main_dtb"):
-                key = "dtb" if name == "lk_main_dtb" else name
-                subparts[key] = {
-                    "name": name,
-                    "offset": f"0x{pos:06X}",
-                    "size": f"0x{dsize:06X}",
-                    "size_bytes": dsize,
-                    "header_offset": f"0x{pos:06X}",
-                    "payload_offset": f"0x{pos+512:06X}",
-                    "payload_size": f"0x{dsize:06X}",
-                    "load_addr": f"0x{DEFAULT_LOAD_VIRT[key]:016X}" if key in DEFAULT_LOAD_VIRT else "DRAM staging",
-                    "el": 3 if key == "bl2_ext" else (1 if key in ("lk", "aee") else None)
-                }
-                print(f"[+] Found subpartition '{name}' @ 0x{pos:06X} ({dsize:,} bytes payload)")
-            pos += 512 + dsize
-        else:
-            next_hdr = img_bytes.find(b"\x88\x16\x88\x58", pos + 1)
-            if next_hdr == -1:
-                break
-            pos = next_hdr
+    for hdr in iter_mkimg_headers(img_bytes):
+        name = hdr.name
+        if name in ("lk", "bl2_ext", "aee", "lk_main_dtb"):
+            key = "dtb" if name == "lk_main_dtb" else name
+            subparts[key] = {
+                "name": name,
+                "offset": f"0x{hdr.header_offset:06X}",
+                "size": f"0x{hdr.payload_size:06X}",
+                "size_bytes": hdr.payload_size,
+                "header_offset": f"0x{hdr.header_offset:06X}",
+                "payload_offset": f"0x{hdr.payload_offset:06X}",
+                "payload_size": f"0x{hdr.payload_size:06X}",
+                "load_addr": f"0x{DEFAULT_LOAD_VIRT[key]:016X}" if key in DEFAULT_LOAD_VIRT else "DRAM staging",
+                "el": 3 if key == "bl2_ext" else (1 if key in ("lk", "aee") else None)
+            }
+            print(f"[+] Found subpartition '{name}' @ 0x{hdr.header_offset:06X} ({hdr.payload_size:,} bytes payload)")
 
     # Compute container spans
     subpart_keys = ["lk", "bl2_ext", "aee", "dtb"]
@@ -118,7 +102,7 @@ def scaffold_device(codename, soc, lk_img_path, out_dir=None):
 
     print(f"\n[+] Detected {len(zero_regions)} zero-filled executable padding regions in .text:")
     for zid, zinfo in zero_regions.items():
-        print(f"    * {zid}: 0x{zinfo['file_offset']}..0x{zinfo['file_offset_end']} ({zinfo['size_bytes']:,} bytes)")
+        print(f"    * {zid}: {zinfo['file_offset']}..{zinfo['file_offset_end']} ({zinfo['size_bytes']:,} bytes)")
 
     # 3. Detect trailing unallocated flash space
     last_subpart_end = 0
@@ -196,16 +180,17 @@ def scaffold_device(codename, soc, lk_img_path, out_dir=None):
     print(f"  4. Run './loki verify {out_json}' to validate.")
 
 def main():
-    if len(sys.argv) < 4:
-        print(f"Usage: {sys.argv[0]} <device_codename> <soc_name> <path/to/lk.img> [output_dir]")
-        print(f"Example: {sys.argv[0]} redmi_note_12 mt6789 firmware/lk.img")
-        sys.exit(1)
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Bootstrap a new device profile (JSON + C Header) from stock lk.img"
+    )
+    parser.add_argument("codename", help="Device codename (e.g. redmi_note_12)")
+    parser.add_argument("soc", help="SoC name (e.g. mt6789)")
+    parser.add_argument("image", help="Path to stock lk.img")
+    parser.add_argument("-o", "--output", help="Custom output directory")
+    args = parser.parse_args()
 
-    codename = sys.argv[1]
-    soc = sys.argv[2]
-    lk_img = sys.argv[3]
-    out_dir = sys.argv[4] if len(sys.argv) > 4 else None
-    scaffold_device(codename, soc, lk_img, out_dir)
+    scaffold_device(args.codename, args.soc, args.image, args.output)
 
 if __name__ == "__main__":
     main()

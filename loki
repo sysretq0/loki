@@ -22,6 +22,7 @@ import argparse
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 TOOLS_DIR = os.path.join(REPO_ROOT, "tools")
 sys.path.insert(0, TOOLS_DIR)
+sys.path.insert(0, os.path.join(TOOLS_DIR, "capstone"))
 
 def cmd_unpack(args):
     import unpack
@@ -30,7 +31,7 @@ def cmd_unpack(args):
 
 def cmd_scan(args):
     try:
-        from capstone import scan_lk
+        import scan_lk
     except ImportError:
         print("[!] Error: capstone is required for scanning. Run: pip install -r requirements.txt")
         sys.exit(1)
@@ -39,7 +40,7 @@ def cmd_scan(args):
 
 def cmd_scan_bl2(args):
     try:
-        from capstone import scan_bl2_ext
+        import scan_bl2_ext
     except ImportError:
         print("[!] Error: capstone is required for scanning. Run: pip install -r requirements.txt")
         sys.exit(1)
@@ -48,16 +49,23 @@ def cmd_scan_bl2(args):
 
 def cmd_deadcode(args):
     try:
-        from capstone import scan_deadcode
+        import scan_deadcode
     except ImportError:
         print("[!] Error: capstone is required for deadcode scanning. Run: pip install -r requirements.txt")
         sys.exit(1)
-    # Check if user passed arguments
-    if args.binary:
+    fw = args.binary or scan_deadcode.locate_firmware_image()
+    if fw:
+        with open(fw, "rb") as f:
+            img = f.read()
+        lk_data = scan_deadcode.extract_subpartition(img, "lk")
+        if lk_data is None:
+            lk_data = img
         base = int(args.base, 16) if args.base else scan_deadcode.DEFAULT_LK_LOAD_VIRT
-        scan_deadcode.analyze_deadcode(args.binary, base)
+        scan_deadcode.analyze_deadcode(lk_data, base, display_name=fw)
     else:
-        scan_deadcode.main()
+        print("[*] Notice: No firmware binary found.")
+        print("Usage: ./loki deadcode <path/to/lk.img|00_lk.bin> [-b base_virtual_addr]")
+        print("  Or set LOKI_FIRMWARE_IMG=<path/to/lk.img>")
 
 def cmd_verify(args):
     import verify
@@ -76,9 +84,23 @@ def cmd_verify(args):
         verify.main()
 
 def cmd_gen_header(args):
-    from gen_header import generate_header
+    from gen_header import generate_header, generate_r2_script, generate_rizin_script
     out_h = args.output or args.device.replace(".json", ".h")
     generate_header(args.device, out_h)
+
+    r2_path = args.r2
+    rz_path = args.rz
+
+    if args.all:
+        if not r2_path:
+            r2_path = os.path.join(REPO_ROOT, "tools", "radare2", "lk_map.r2")
+        if not rz_path:
+            rz_path = os.path.join(REPO_ROOT, "tools", "rizin", "lk_map.rz")
+
+    if r2_path:
+        generate_r2_script(args.device, r2_path)
+    if rz_path:
+        generate_rizin_script(args.device, rz_path)
 
 def cmd_init(args):
     from init_device import scaffold_device
@@ -160,6 +182,9 @@ def main():
     p_gh = sub.add_parser("gen-header", help="Generate or update C header from device JSON profile")
     p_gh.add_argument("device", help="Path to device JSON file")
     p_gh.add_argument("-o", "--output", help="Output C header file (default: replaces .json with .h)")
+    p_gh.add_argument("--r2", help="Output Radare2 script path (.r2)")
+    p_gh.add_argument("--rz", help="Output Rizin script path (.rz)")
+    p_gh.add_argument("--all", action="store_true", help="Generate header and update repository r2 and rizin scripts")
 
     # init
     p_init = sub.add_parser("init", help="Bootstrap a new device profile from an lk.img container")

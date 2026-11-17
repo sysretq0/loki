@@ -16,11 +16,23 @@ Specifically validates:
 import os
 import sys
 import struct
+from typing import Union
 import capstone
 
-DEFAULT_LK_LOAD_VIRT = 0xFFFF000050F00000
+TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, TOOLS_DIR)
+
+from common import (
+    locate_firmware_image,
+    extract_subpartition,
+    decode_aarch64_branch_target,
+    is_aarch64_bl,
+    is_aarch64_b,
+    DEFAULT_LOAD_VIRT,
+)
 
 # ADVAN X1 / MT6789 Reference Values
+DEFAULT_LK_LOAD_VIRT = DEFAULT_LOAD_VIRT["lk"]
 STRAPPING_BRANCH_OFFSET = 0x002528
 STRAPPING_BRANCH_VIRT   = 0xFFFF000050F02528
 MSDC_CAVE_START_OFFSET  = 0x01F2A0
@@ -29,9 +41,14 @@ MSDC_CAVE_END_OFFSET    = 0x025DE0
 MSDC_CAVE_END_VIRT      = 0xFFFF000050F25DE0
 MSDC_CAVE_SIZE          = MSDC_CAVE_END_OFFSET - MSDC_CAVE_START_OFFSET  # 27,456 bytes (0x6B40)
 
-def analyze_deadcode(binary_path, base_virt=DEFAULT_LK_LOAD_VIRT):
-    with open(binary_path, "rb") as f:
-        data = f.read()
+def analyze_deadcode(binary_or_data: Union[str, bytes], base_virt: int = DEFAULT_LK_LOAD_VIRT, display_name: str = "LK Binary"):
+    if isinstance(binary_or_data, (bytes, bytearray)):
+        data = bytes(binary_or_data)
+        src_label = display_name
+    else:
+        with open(binary_or_data, "rb") as f:
+            data = f.read()
+        src_label = binary_or_data
 
     md = capstone.Cs(capstone.CS_ARCH_ARM64, capstone.CS_MODE_ARM)
     md.detail = True
@@ -39,7 +56,7 @@ def analyze_deadcode(binary_path, base_virt=DEFAULT_LK_LOAD_VIRT):
     print("=" * 68)
     print(" MediaTek LK Dead Code Cave & Hardware Strapping Scanner")
     print("=" * 68)
-    print(f"[*] Binary: {binary_path} ({len(data):,} bytes)")
+    print(f"[*] Target: {src_label} ({len(data):,} bytes)")
     print(f"[*] Base Virtual Address: 0x{base_virt:016X}\n")
 
     # 1. Inspect Hardware Strapping Selector
@@ -66,11 +83,8 @@ def analyze_deadcode(binary_path, base_virt=DEFAULT_LK_LOAD_VIRT):
     internal_callers = []
     for i in range(0, len(data) - 4, 4):
         ins_word = struct.unpack_from("<I", data, i)[0]
-        if (ins_word & 0xFC000000) in (0x94000000, 0x14000000): # BL or B
-            imm26 = ins_word & 0x03FFFFFF
-            if imm26 & 0x02000000:
-                imm26 -= 0x04000000
-            target = (base_virt + i) + (imm26 << 2)
+        if is_aarch64_bl(ins_word) or is_aarch64_b(ins_word):
+            target = decode_aarch64_branch_target(ins_word, base_virt + i)
             if MSDC_CAVE_START_VIRT <= target < MSDC_CAVE_END_VIRT:
                 caller_va = base_virt + i
                 if MSDC_CAVE_START_OFFSET <= i < MSDC_CAVE_END_OFFSET:
@@ -103,45 +117,18 @@ def analyze_deadcode(binary_path, base_virt=DEFAULT_LK_LOAD_VIRT):
 
     print("\n[+] Dead code analysis complete. All cave boundaries verified.")
 
-def locate_firmware_image():
-    if len(sys.argv) > 1:
-        if os.path.exists(sys.argv[1]):
-            return sys.argv[1]
-        print(f"[!] Warning: Specified firmware '{sys.argv[1]}' not found.")
-        return None
-    env_fw = os.environ.get("LOKI_FIRMWARE_IMG")
-    if env_fw:
-        if os.path.exists(env_fw):
-            return env_fw
-        print(f"[!] Warning: LOKI_FIRMWARE_IMG='{env_fw}' not found.")
-        return None
-    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    candidates = [
-        os.path.join(repo_root, "firmware", "lk.img"),
-        "/work/firmware/advan_x1/lk.img"
-    ]
-    for c in candidates:
-        if os.path.exists(c):
-            return c
-    return None
-
 def main():
-    fw_path = locate_firmware_image()
+    arg = sys.argv[1] if len(sys.argv) > 1 else None
+    fw_path = locate_firmware_image(arg)
     if fw_path:
         with open(fw_path, "rb") as f:
             img = f.read()
-        # If it is an mkimg container, extract 00_lk.bin payload
-        if len(img) >= 512 and struct.unpack_from("<I", img, 0)[0] == 0x58881688:
-            lk_data = img[512 : 512 + 667424]
-        else:
-            lk_data = img
-        tmp_lk = "/tmp/00_lk_scan.bin"
-        with open(tmp_lk, "wb") as f:
-            f.write(lk_data)
+        # If it is an mkimg container, extract lk subpartition payload
+        lk_data = extract_subpartition(img, "lk")
+        if lk_data is None:
+            lk_data = img  # Treat as raw binary if not an mkimg container
         base_virt = int(sys.argv[2], 16) if len(sys.argv) > 2 else DEFAULT_LK_LOAD_VIRT
-        analyze_deadcode(tmp_lk, base_virt)
-        if os.path.exists(tmp_lk):
-            os.remove(tmp_lk)
+        analyze_deadcode(lk_data, base_virt, display_name=fw_path)
     else:
         print("[*] Notice: No firmware binary found.")
         print(f"Usage: {sys.argv[0]} <path/to/lk.img|00_lk.bin> [base_virtual_addr]")

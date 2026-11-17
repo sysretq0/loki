@@ -130,7 +130,7 @@ The MediaTek `lk` partition (4 MiB) is an `mkimg` multi-image container containi
 | **Proof Hook Placement** | `./loki proof` | `make proof` | `python3 tools/proof/build_proof.py` |
 | **Dead-Code Analysis** | `./loki deadcode` | `make deadcode` | `python3 tools/capstone/scan_deadcode.py` |
 | **Device Scaffolding** | `./loki init <name> <soc> <img\>` | — | `python3 tools/init_device.py` |
-| **Header Generation** | `./loki gen-header <json\>` | `make gen-header DEVICE=...` | `python3 tools/gen_header.py` |
+| **Header & Script Sync** | `./loki gen-header <json\> [--all]` | `make gen-header DEVICE=...` | `python3 tools/gen_header.py <json\> --all` |
 | **Container Unpacking** | `./loki unpack <img\>` | — | `python3 tools/unpack.py` |
 | **LK Symbol Scanning** | `./loki scan <bin\>` | — | `python3 tools/capstone/scan_lk.py` |
 | **BL2_EXT Scanning** | `./loki scan-bl2 <bin\>` | — | `python3 tools/capstone/scan_bl2_ext.py` |
