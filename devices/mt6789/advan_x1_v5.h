@@ -148,4 +148,26 @@
 #define HOOK_SITE_KERNEL_DECOMP_CALL 0xFFFF000050F0BD58ULL  /* bl call site in mt_boot */
 #define HOOK_SITE_BL2_EXT_SPSR       0xFFFF000062F04FBCULL  /* EL3 SPSR drop routine in bl2_ext */
 
+/* --- Hardware- & Build-Specific Dead Code Caves (.text) --- */
+/* ADVAN X1 uses UFS 2.2 storage; strapping bit 10 is 0. emmc_init() is bypassed. */
+/* Entire 27.4 KiB MSDC/eMMC driver is unreached at runtime, safe for in-situ payloads. */
+#define DEADCODE_MSDC_EMMC_OFFSET    0x01F2A0ULL
+#define DEADCODE_MSDC_EMMC_VIRT      0xFFFF000050F1F2A0ULL
+#define DEADCODE_MSDC_EMMC_SIZE      27456ULL     /* 0x6B40 bytes (26.8 KiB) */
+
+/* Unused MMC device tree patch routine */
+#define DEADCODE_MMC_DTS_PATCH_OFFSET 0x0422F0ULL
+#define DEADCODE_MMC_DTS_PATCH_VIRT  0xFFFF000050F422F0ULL
+#define DEADCODE_MMC_DTS_PATCH_SIZE  256ULL
+
+/* Unused factory ultraflash fastboot command */
+#define DEADCODE_OEM_ULTRAFLASH_OFFSET 0x007448ULL
+#define DEADCODE_OEM_ULTRAFLASH_VIRT 0xFFFF000050F07448ULL
+#define DEADCODE_OEM_ULTRAFLASH_SIZE 184ULL
+
+/* Unused engineering USB-to-JTAG switch handler */
+#define DEADCODE_USB2JTAG_OFFSET     0x0060DCULL
+#define DEADCODE_USB2JTAG_VIRT       0xFFFF000050F060DCULL
+#define DEADCODE_USB2JTAG_SIZE       216ULL
+
 #endif /* ADVAN_X1_V5_H */

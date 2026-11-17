@@ -72,6 +72,16 @@ def verify_device(json_path):
             if size_def in defines:
                 assert reg_info["size_bytes"] == defines[size_def], f"Mismatch for {size_def}"
 
+        # Verify dead code if present
+        dead_codes = data.get("dead_code", {}).get("lk", {})
+        for dc_name, dc_info in dead_codes.items():
+            virt_def = f"{dc_name}_VIRT"
+            size_def = f"{dc_name}_SIZE"
+            if virt_def in defines:
+                assert int(dc_info["addr_start"], 16) == defines[virt_def], f"Mismatch for {virt_def}"
+            if size_def in defines:
+                assert dc_info["size_bytes"] == defines[size_def], f"Mismatch for {size_def}"
+
         print("    -> C header and JSON definitions match perfectly.")
 
     return data
@@ -118,6 +128,16 @@ def verify_binary(data, lk_img_path):
         is_zero = all(b == 0 for b in region_bytes)
         print(f"    Zero region {reg_name} [0x{ofs_start:06X}..0x{ofs_end:06X}] ({len(region_bytes)} bytes): pure zeros = {is_zero}")
         assert is_zero, f"{reg_name} contains non-zero data!"
+
+    # Check dead code caves in LK
+    dead_codes = data.get("dead_code", {}).get("lk", {})
+    for dc_name, dc_info in dead_codes.items():
+        ofs_start = int(dc_info["file_offset"], 16)
+        ofs_end = int(dc_info["file_offset_end"], 16)
+        expected_size = dc_info["size_bytes"]
+        assert ofs_end - ofs_start == expected_size, f"Size mismatch for {dc_name}"
+        assert ofs_end <= len(lk_bin), f"Dead code {dc_name} out of bounds!"
+        print(f"    Dead code cave {dc_name} [0x{ofs_start:06X}..0x{ofs_end:06X}] ({expected_size:,} bytes): valid bounds")
 
     print("    -> Binary assertions verified successfully.")
 

@@ -341,5 +341,53 @@
       "target": "0xFFFF000062F04FBC",
       "desc": "Secure EL3 SPSR drop routine in bl2_ext before ATF BL31 handoff"
     }
+  },
+  "dead_code": {
+    "lk": {
+      "DEADCODE_MSDC_EMMC": {
+        "file_offset": "0x01F2A0",
+        "file_offset_end": "0x025DE0",
+        "addr_start": "0xFFFF000050F1F2A0",
+        "addr_end": "0xFFFF000050F25DE0",
+        "size_bytes": 27456,
+        "permissions": "RX",
+        "condition": "ADVAN X1 hardware uses UFS 2.2 storage (ufs-mtk). Strapping bit 10 is 0; platform storage init routes exclusively to ufs_init() at 0x50F31784. The single call site to emmc_init() at 0x50F0253C (tbnz w20, #0xa) is never taken. The entire 27.4 KiB MSDC/eMMC driver subtree is completely unreached at runtime.",
+        "replacement_capacity": 27456,
+        "desc": "Unreached eMMC/SDcard driver subsystem; prime candidate for large in-situ stage payloads or custom chainloaders"
+      },
+      "DEADCODE_MMC_DTS_PATCH": {
+        "file_offset": "0x0422F0",
+        "file_offset_end": "0x0423F0",
+        "addr_start": "0xFFFF000050F422F0",
+        "addr_end": "0xFFFF000050F423F0",
+        "size_bytes": 256,
+        "permissions": "RX",
+        "condition": "FDT update routine for /soc/mmc@11230000. Never executed on UFS-only device trees.",
+        "replacement_capacity": 256,
+        "desc": "Unused MMC device tree patch routine"
+      },
+      "DEADCODE_OEM_ULTRAFLASH": {
+        "file_offset": "0x007448",
+        "file_offset_end": "0x007500",
+        "addr_start": "0xFFFF000050F07448",
+        "addr_end": "0xFFFF000050F07500",
+        "size_bytes": 184,
+        "permissions": "RX",
+        "condition": "Factory production line fastboot ultraflash command handler; never executed in retail bootloader state.",
+        "replacement_capacity": 184,
+        "desc": "Unused factory fastboot ultraflash handler"
+      },
+      "DEADCODE_USB2JTAG": {
+        "file_offset": "0x0060DC",
+        "file_offset_end": "0x0061B4",
+        "addr_start": "0xFFFF000050F060DC",
+        "addr_end": "0xFFFF000050F061B4",
+        "size_bytes": 216,
+        "permissions": "RX",
+        "condition": "Engineering USB-to-JTAG switch routine; gated on proprietary challenge-response token never present in retail builds.",
+        "replacement_capacity": 216,
+        "desc": "Unused engineering USB-to-JTAG command handler"
+      }
+    }
   }
 }

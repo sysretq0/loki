@@ -101,6 +101,10 @@
     "hooks": {
       "type": "object",
       "description": "Catalog of safe hook sites across bootchain lifecycle"
+    },
+    "dead_code": {
+      "type": "object",
+      "description": "Hardware- or build-specific unreferenced code regions (caves) safe for in-situ payload placement"
     }
   }
 }
