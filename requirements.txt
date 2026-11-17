@@ -1,0 +1,3 @@
+# Loki — MediaTek Bootchain Reverse-Engineering & Symbol Mapping Framework
+# Core dependencies
+capstone>=4.0.0

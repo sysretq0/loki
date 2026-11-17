@@ -3,3 +3,4 @@ extracted/
 __pycache__/
 *.o
 *.bin
+!tools/proof/proof_hook.bin

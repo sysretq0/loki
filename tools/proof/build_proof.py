@@ -11,6 +11,7 @@ completely avoiding dead code reuse.
 import os
 import sys
 import subprocess
+import shutil
 import struct
 import hashlib
 
@@ -28,20 +29,33 @@ HOOK_SITE_MTBOOT      = 0xFFFF000050F99AA8
 def compile_proof_hook(out_bin):
     src_dir = os.path.dirname(os.path.abspath(__file__))
     src_s = os.path.join(src_dir, "proof_hook.S")
+    ref_bin = os.path.join(src_dir, "proof_hook.bin")
     out_o = out_bin + ".o"
 
-    cmd_gcc = ["aarch64-linux-gnu-gcc", "-nostdlib", "-nostartfiles", "-fPIC", "-c", src_s, "-o", out_o]
-    cmd_objcopy = ["aarch64-linux-gnu-objcopy", "-O", "binary", out_o, out_bin]
+    gcc = shutil.which("aarch64-linux-gnu-gcc")
+    objcopy = shutil.which("aarch64-linux-gnu-objcopy")
 
-    subprocess.check_call(cmd_gcc)
-    subprocess.check_call(cmd_objcopy)
-    if os.path.exists(out_o):
-        os.remove(out_o)
-
-    with open(out_bin, "rb") as f:
-        data = f.read()
-    print(f"[+] Compiled proof hook: {out_bin} ({len(data)} bytes, SHA: {hashlib.sha256(data).hexdigest()[:16]}...)")
-    return data
+    if gcc and objcopy:
+        cmd_gcc = [gcc, "-nostdlib", "-nostartfiles", "-fPIC", "-c", src_s, "-o", out_o]
+        cmd_objcopy = [objcopy, "-O", "binary", out_o, out_bin]
+        subprocess.check_call(cmd_gcc)
+        subprocess.check_call(cmd_objcopy)
+        if os.path.exists(out_o):
+            os.remove(out_o)
+        with open(out_bin, "rb") as f:
+            data = f.read()
+        print(f"[+] Compiled proof hook: {out_bin} ({len(data)} bytes, SHA: {hashlib.sha256(data).hexdigest()[:16]}...)")
+        return data
+    elif os.path.exists(ref_bin):
+        print(f"[*] aarch64 cross-compiler not found; using pre-assembled reference binary: {ref_bin}")
+        shutil.copyfile(ref_bin, out_bin)
+        with open(out_bin, "rb") as f:
+            data = f.read()
+        return data
+    else:
+        print("[!] Error: No aarch64 cross-compiler (gcc-aarch64-linux-gnu) or reference binary found.")
+        print("    Install with: sudo apt install gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu")
+        sys.exit(1)
 
 def verify_hook_placement(lk_bin_path):
     with open(lk_bin_path, "rb") as f:

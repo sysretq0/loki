@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""
+loki — Unified Command-Line Interface for MediaTek Little Kernel Reverse-Engineering
+
+Commands:
+  unpack       Extract discrete subpartitions and certificates from composite lk.img
+  scan         Scan raw Little Kernel binary for entry points, SMC trampolines & anchors
+  scan-bl2     Scan raw BL2_EXT binary for SPSR drops and memory reservation pools
+  deadcode     Scan hardware strapping selectors and analyze dead code caves
+  verify       Validate device JSON maps, C headers, and binary consistency
+  gen-header   Auto-generate matching C header (*.h) from device JSON (*.json)
+  init         Scaffold a new device definition from a stock lk.img container
+  proof        Build and test freestanding ARM64 proof hook in zero-filled .text
+  devices      List all supported SoC and device symbol maps in the repository
+"""
+
+import os
+import sys
+import argparse
+
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+TOOLS_DIR = os.path.join(REPO_ROOT, "tools")
+sys.path.insert(0, TOOLS_DIR)
+
+def cmd_unpack(args):
+    import unpack
+    out = args.output or "extracted"
+    unpack.unpack_lk(args.image, out)
+
+def cmd_scan(args):
+    try:
+        from capstone import scan_lk
+    except ImportError:
+        print("[!] Error: capstone is required for scanning. Run: pip install -r requirements.txt")
+        sys.exit(1)
+    base = int(args.base, 16) if args.base else scan_lk.DEFAULT_LK_LOAD_VIRT
+    scan_lk.scan_lk(args.binary, base)
+
+def cmd_scan_bl2(args):
+    try:
+        from capstone import scan_bl2_ext
+    except ImportError:
+        print("[!] Error: capstone is required for scanning. Run: pip install -r requirements.txt")
+        sys.exit(1)
+    base = int(args.base, 16) if args.base else scan_bl2_ext.DEFAULT_BL2_EXT_LOAD_VIRT
+    scan_bl2_ext.scan_bl2_ext(args.binary, base)
+
+def cmd_deadcode(args):
+    try:
+        from capstone import scan_deadcode
+    except ImportError:
+        print("[!] Error: capstone is required for deadcode scanning. Run: pip install -r requirements.txt")
+        sys.exit(1)
+    # Check if user passed arguments
+    if args.binary:
+        base = int(args.base, 16) if args.base else scan_deadcode.DEFAULT_LK_LOAD_VIRT
+        scan_deadcode.analyze_deadcode(args.binary, base)
+    else:
+        scan_deadcode.main()
+
+def cmd_verify(args):
+    import verify
+    if args.device:
+        data = verify.verify_device(args.device)
+        fw = args.firmware or verify.locate_firmware_image()
+        if fw:
+            verify.verify_binary(data, fw)
+        else:
+            print("[*] Notice: No firmware image provided. Skipping raw binary audits.")
+    else:
+        # Run standard test suite
+        sys.argv = [sys.argv[0]]
+        if args.firmware:
+            sys.argv.append(args.firmware)
+        verify.main()
+
+def cmd_gen_header(args):
+    from gen_header import generate_header
+    out_h = args.output or args.device.replace(".json", ".h")
+    generate_header(args.device, out_h)
+
+def cmd_init(args):
+    from init_device import scaffold_device
+    scaffold_device(args.codename, args.soc, args.image, args.output)
+
+def cmd_proof(args):
+    from proof import build_proof
+    out_dir = os.path.join(REPO_ROOT, "build")
+    os.makedirs(out_dir, exist_ok=True)
+    hook_bin = os.path.join(out_dir, "proof_hook.bin")
+    build_proof.compile_proof_hook(hook_bin)
+    if args.binary:
+        build_proof.verify_hook_placement(args.binary)
+    else:
+        print("\nPass an extracted 00_lk.bin to verify hook placement, e.g.:")
+        print("  ./loki proof extracted/00_lk.bin")
+
+def cmd_devices(args):
+    devices_dir = os.path.join(REPO_ROOT, "devices")
+    print("=" * 68)
+    print(" Supported MediaTek Devices & Architectures in Loki")
+    print("=" * 68)
+    found = 0
+    import json
+    for root, _, files in os.walk(devices_dir):
+        for f in files:
+            if f.endswith(".json"):
+                p = os.path.join(root, f)
+                try:
+                    with open(p, "r", encoding="utf-8") as jf:
+                        d = json.load(jf)
+                    soc = d.get("soc", "Unknown SoC")
+                    dev = d.get("device", f)
+                    fw = d.get("firmware_version", "v1")
+                    sha = d.get("stock_lk_sha256", "N/A")[:16] + "..."
+                    rel = os.path.relpath(p, REPO_ROOT)
+                    print(f"  * {dev:<20} | SoC: {soc:<26} | Baseline: {fw:<4} | Profile: {rel}")
+                    found += 1
+                except Exception:
+                    pass
+    if found == 0:
+        print("  No device profiles found in devices/")
+    print(f"\nTotal mapped devices: {found}")
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="loki",
+        description="Loki — MediaTek Bootchain Reverse-Engineering & Symbol Mapping Framework",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    sub = parser.add_subparsers(dest="command", help="Available subcommands")
+
+    # unpack
+    p_unpack = sub.add_parser("unpack", help="Extract subpartitions from composite lk.img")
+    p_unpack.add_argument("image", help="Path to composite lk.img")
+    p_unpack.add_argument("-o", "--output", help="Output directory for extracted subpartitions (default: extracted/)")
+
+    # scan
+    p_scan = sub.add_parser("scan", help="Scan raw Little Kernel binary for function entry points")
+    p_scan.add_argument("binary", help="Path to extracted 00_lk.bin")
+    p_scan.add_argument("-b", "--base", help="Base virtual address (default: 0xFFFF000050F00000)")
+
+    # scan-bl2
+    p_scan_bl2 = sub.add_parser("scan-bl2", help="Scan raw BL2_EXT binary for SPSR drops and memory pools")
+    p_scan_bl2.add_argument("binary", help="Path to extracted 03_bl2_ext.bin")
+    p_scan_bl2.add_argument("-b", "--base", help="Base virtual address (default: 0xFFFF000062F00000)")
+
+    # deadcode
+    p_dc = sub.add_parser("deadcode", help="Scan hardware strapping selectors and dead code caves")
+    p_dc.add_argument("binary", nargs="?", help="Path to 00_lk.bin or lk.img")
+    p_dc.add_argument("-b", "--base", help="Base virtual address")
+
+    # verify
+    p_ver = sub.add_parser("verify", help="Validate schema, C headers, and binary consistency")
+    p_ver.add_argument("device", nargs="?", help="Specific device JSON file to verify")
+    p_ver.add_argument("-f", "--firmware", help="Path to stock lk.img container for binary assertions")
+
+    # gen-header
+    p_gh = sub.add_parser("gen-header", help="Generate or update C header from device JSON profile")
+    p_gh.add_argument("device", help="Path to device JSON file")
+    p_gh.add_argument("-o", "--output", help="Output C header file (default: replaces .json with .h)")
+
+    # init
+    p_init = sub.add_parser("init", help="Bootstrap a new device profile from an lk.img container")
+    p_init.add_argument("codename", help="Device codename (e.g. redmi_note_12)")
+    p_init.add_argument("soc", help="SoC name (e.g. mt6789)")
+    p_init.add_argument("image", help="Path to stock lk.img")
+    p_init.add_argument("-o", "--output", help="Custom output directory")
+
+    # proof
+    p_proof = sub.add_parser("proof", help="Build/verify freestanding proof hook placement")
+    p_proof.add_argument("binary", nargs="?", help="Path to extracted 00_lk.bin")
+
+    # devices
+    sub.add_parser("devices", help="List all supported device profiles in the repository")
+
+    args = parser.parse_args()
+    if not args.command:
+        parser.print_help()
+        sys.exit(0)
+
+    dispatch = {
+        "unpack": cmd_unpack,
+        "scan": cmd_scan,
+        "scan-bl2": cmd_scan_bl2,
+        "deadcode": cmd_deadcode,
+        "verify": cmd_verify,
+        "gen-header": cmd_gen_header,
+        "init": cmd_init,
+        "proof": cmd_proof,
+        "devices": cmd_devices,
+    }
+    dispatch[args.command](args)
+
+if __name__ == "__main__":
+    main()

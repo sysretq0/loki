@@ -14,7 +14,50 @@
 
 ---
 
-## 2. Partition Architecture (`lk.img`)
+## 2. Quickstart & Unified CLI (`./loki`)
+
+`loki` provides a unified command runner `./loki` to inspect, unpack, scaffold, and verify device profiles:
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. View supported devices
+./loki devices
+
+# 3. Scaffold a new device profile from stock firmware
+./loki init <device_codename> <soc_name> /path/to/stock/lk.img
+
+# 4. Run the full verification suite
+./loki verify
+# Or via Makefile:
+make verify FW=/path/to/stock/lk.img
+```
+
+### CLI Subcommands Reference
+
+| Subcommand | Purpose | Usage Example |
+|---|---|---|
+| `devices` | List all mapped devices and SoC architectures | `./loki devices` |
+| `init` | Bootstrap new device `.json` and `.h` from `lk.img` | `./loki init advan_x1 mt6789 /path/to/lk.img` |
+| `unpack` | Extract raw subpartitions from composite `lk.img` | `./loki unpack /path/to/lk.img extracted/` |
+| `scan` | Scan raw `lk.bin` for MMU, SMC, and anchor points | `./loki scan extracted/00_lk.bin` |
+| `scan-bl2` | Scan `bl2_ext.bin` for SPSR drops & memory pools | `./loki scan-bl2 extracted/03_bl2_ext.bin` |
+| `deadcode` | Scan hardware strapping & dead-code caves | `./loki deadcode extracted/00_lk.bin` |
+| `verify` | Validate schemas, C headers, and binary assertions | `./loki verify [device.json] [-f lk.img]` |
+| `gen-header` | Auto-generate C header (`.h`) from device `.json` | `./loki gen-header devices/mt6789/advan_x1_v5.json` |
+| `proof` | Build freestanding proof hook & verify placement | `./loki proof [extracted/00_lk.bin]` |
+
+> [!TIP]
+> You can point `loki` and `make` to your local firmware dump using the `LOKI_FIRMWARE_IMG` environment variable or the `FW=` parameter:
+> ```bash
+> export LOKI_FIRMWARE_IMG=/path/to/stock/lk.img
+> make verify
+> ```
+
+---
+
+## 3. Partition Architecture (`lk.img`)
 
 The MediaTek `lk` partition (4 MiB) is an `mkimg` multi-image container containing discrete sub-images. Every sub-image (including certificates) is preceded by a 512-byte `mkimg` header (`magic: 0x58881688`):
 
@@ -42,7 +85,7 @@ The MediaTek `lk` partition (4 MiB) is an `mkimg` multi-image container containi
 
 ---
 
-## 3. Stock Bootchain Lifecycle Overview
+## 4. Stock Bootchain Lifecycle Overview
 
 ```
 [ Mask ROM BROM ]
@@ -77,21 +120,27 @@ The MediaTek `lk` partition (4 MiB) is an `mkimg` multi-image container containi
 
 ---
 
-## 4. Discovery Tooling Suite
+## 5. Tooling & Discovery Suite
 
-* **`make verify` / `tools/verify.py`**: Automated schema, C header, dead-code, and binary assertion suite.
-* **`make proof` / `tools/proof/build_proof.py`**: Compiles freestanding ARM64 proof hook and tests zero-region placement.
-* **`make deadcode` / `tools/capstone/scan_deadcode.py`**: Scans hardware strapping selectors and verifies dead code cave isolation.
-* **`tools/unpack.py`**: Extracts all discrete sub-images and signatures from `lk.img`.
-* **`tools/capstone/scan_lk.py`**: Scans raw LK ARM64 binaries for MMU disable jumps, SMC boot trampolines, WDT keys, and string anchors.
-* **`tools/capstone/scan_bl2_ext.py`**: Scans raw BL2_EXT binaries for SPSR privilege drop sites and memory reservation pools.
-* **`tools/pyghidra/analyze_lk.py`**: Headless Ghidra decompilation and cross-reference crawler.
-* **`tools/radare2/lk_map.r2`**: Interactive radare2 flags, functions, and analysis macros.
-* **`tools/rizin/lk_map.rz`**: Interactive rizin analysis script.
+`loki` offers three interchangeable execution layers: the high-level `./loki` CLI, standard `make` targets, and raw Python scripts:
+
+| Workflow Step | Unified CLI | Make Target | Standalone Script |
+|---|---|---|---|
+| **Full Validation** | `./loki verify` | `make verify` | `python3 tools/verify.py` |
+| **Proof Hook Placement** | `./loki proof` | `make proof` | `python3 tools/proof/build_proof.py` |
+| **Dead-Code Analysis** | `./loki deadcode` | `make deadcode` | `python3 tools/capstone/scan_deadcode.py` |
+| **Device Scaffolding** | `./loki init <name> <soc> <img\>` | — | `python3 tools/init_device.py` |
+| **Header Generation** | `./loki gen-header <json\>` | `make gen-header DEVICE=...` | `python3 tools/gen_header.py` |
+| **Container Unpacking** | `./loki unpack <img\>` | — | `python3 tools/unpack.py` |
+| **LK Symbol Scanning** | `./loki scan <bin\>` | — | `python3 tools/capstone/scan_lk.py` |
+| **BL2_EXT Scanning** | `./loki scan-bl2 <bin\>` | — | `python3 tools/capstone/scan_bl2_ext.py` |
+| **Interactive RE (r2)** | — | — | `r2 -i tools/radare2/lk_map.r2 extracted/00_lk.bin` |
+| **Interactive RE (rizin)** | — | — | `rizin -i tools/rizin/lk_map.rz extracted/00_lk.bin` |
+| **Headless Decompilation** | — | — | `python3 tools/pyghidra/analyze_lk.py extracted/00_lk.bin` |
 
 ---
 
-## 5. Code Placement Strategies: Zero-Regions vs Dead-Code Caves
+## 6. Code Placement Strategies: Zero-Regions vs Dead-Code Caves
 
 `loki` categorizes executable code placement into two distinct methods depending on payload size and build requirements:
 
@@ -109,7 +158,7 @@ See [Safe Hook Entry Points & Zero-Region Catalog](docs/HOOK_ENTRY_POINTS.md) an
 
 ---
 
-## 6. Documentation
+## 7. Documentation
 
 * [Hardware-Specific Dead Code Map](docs/DEAD_CODE_MAP.md): Analysis of unreached driver caves, strapping selectors, and large payload placement.
 * [Safe Hook Entry Points & Zero-Region Catalog](docs/HOOK_ENTRY_POINTS.md): Comprehensive catalog of 17 safe hook sites and zero-padding placement.
