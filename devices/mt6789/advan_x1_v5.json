@@ -1,0 +1,284 @@
+{
+  "device": "ADVAN X1",
+  "manufacturer": "ADVAN",
+  "soc": "MT6789 (Helio G99 / MT8781)",
+  "arch": "aarch64",
+  "firmware_version": "v5",
+  "stock_lk_sha256": "a11516b640cfdadfc616dcca9db0160ad72dd473a035830b08ed5802883ae834",
+  "container_size": 4194304,
+  "subpartitions": {
+    "lk": {
+      "name": "Little Kernel 2 (BL33)",
+      "offset": "0x000000",
+      "size": "0x0A3FB0",
+      "size_bytes": 667424,
+      "load_addr": "0xFFFF000050F00000",
+      "el": 1
+    },
+    "bl2_ext": {
+      "name": "Bootloader Extension (BL2_EXT)",
+      "offset": "0x0A3FB0",
+      "size": "0x081ED0",
+      "size_bytes": 527904,
+      "load_addr": "0xFFFF000062F00000",
+      "el": 3
+    },
+    "aee": {
+      "name": "Android Exception Engine (AEE / kedump)",
+      "offset": "0x125E80",
+      "size": "0x0B61A0",
+      "size_bytes": 741608,
+      "load_addr": "0xFFFF000063F00000",
+      "el": 1
+    },
+    "dtb": {
+      "name": "LK Main Device Tree (lk_main_dtb)",
+      "offset": "0x1DC020",
+      "size": "0x02E300",
+      "size_bytes": 189175,
+      "load_addr": "DRAM staging",
+      "el": null
+    }
+  },
+  "symbols": {
+    "lk": {
+      "_start": {
+        "addr": "0xFFFF000050F00000",
+        "desc": "Stock LK entry point; configures MMU (TTBR0/TTBR1) and enables SCTLR_EL1.M",
+        "anchor": "mrs x0, CurrentEL; b.ne drop_el"
+      },
+      "kmain": {
+        "addr": "0xFFFF000050F048D8",
+        "desc": "Primary C kernel init; early arch, platform, heap, spawns bootstrap2 thread",
+        "anchor": "thread_create('bootstrap2', ...)"
+      },
+      "thread_init_early": {
+        "addr": "0xFFFF000050F048FC",
+        "desc": "Initializes scheduler runqueues and idle thread context"
+      },
+      "arch_early_init": {
+        "addr": "0xFFFF000050F04910",
+        "desc": "Configures ARMv8 generic timer cntpct_el0 and system counter frequency"
+      },
+      "platform_early_init": {
+        "addr": "0xFFFF000050F04924",
+        "desc": "Configures early UART0 (0x11002000 @ 921600 baud) and core APB clocks"
+      },
+      "target_early_init": {
+        "addr": "0xFFFF000050F04938",
+        "desc": "Board hardware strapping detection"
+      },
+      "heap_init": {
+        "addr": "0xFFFF000050F0494C",
+        "desc": "Initializes LK dlmalloc heap pool in physical DRAM"
+      },
+      "bootstrap2": {
+        "addr": "0xFFFF000050F049E4",
+        "desc": "Secondary initialization thread; platform_init, display, storage, apps",
+        "anchor": "arch_init(); platform_init(); target_init(); apps_init()"
+      },
+      "target_init": {
+        "addr": "0xFFFF000050F04A2C",
+        "desc": "UFS controller init, GPT partition table load, key detection online",
+        "anchor": "ufs_init(); gpt_init(); keypad_init()"
+      },
+      "apps_init": {
+        "addr": "0xFFFF000050F04A40",
+        "desc": "Iterates LK application table (fastboot, mt_boot)"
+      },
+      "video_clean_screen": {
+        "addr": "0xFFFF000050F089E4",
+        "desc": "Clears active framebuffer memory with black pixels",
+        "signature": "void video_clean_screen(void)"
+      },
+      "video_set_cursor": {
+        "addr": "0xFFFF000050F08B34",
+        "desc": "Sets text console cursor position in character row and column",
+        "signature": "void video_set_cursor(int row, int col)"
+      },
+      "video_printf": {
+        "addr": "0xFFFF000050F08B9C",
+        "desc": "Formats and prints text to video console buffer using bitmap font",
+        "signature": "int video_printf(const char *fmt, ...)"
+      },
+      "mt_disp_update": {
+        "addr": "0xFFFF000050F33A9C",
+        "desc": "Pushes dirty bounding box from DRAM framebuffer to MIPI DSI panel scanout",
+        "signature": "void mt_disp_update(int left, int top, int right, int bottom)"
+      },
+      "mt_disp_init": {
+        "addr": "0xFFFF000050F31248",
+        "desc": "Initializes MIPI DSI panel, display controller, and scanout framebuffer"
+      },
+      "detect_key": {
+        "addr": "0xFFFF000050F04B30",
+        "desc": "Reads state of physical hardware keys (VolUp=6, VolDown=1, Power=8)",
+        "signature": "int detect_key(unsigned short keycode)"
+      },
+      "bio_open": {
+        "addr": "0xFFFF000050F16688",
+        "desc": "Opens a block device / partition by GPT partition name (e.g. 'boot')",
+        "signature": "struct bdev *bio_open(const char *name)"
+      },
+      "bio_read": {
+        "addr": "0xFFFF000050F166C8",
+        "desc": "Reads raw byte stream from block device at given offset",
+        "signature": "ssize bio_read(struct bdev *dev, void *buf, u64 offset, usize len)"
+      },
+      "bio_close": {
+        "addr": "0xFFFF000050F16730",
+        "desc": "Closes an open block device descriptor",
+        "signature": "void bio_close(struct bdev *dev)"
+      },
+      "fastboot_register": {
+        "addr": "0xFFFF000050F07BD4",
+        "desc": "Registers USB fastboot command handler with permission flags",
+        "signature": "void fastboot_register(const char *prefix, void (*handle)(const char *arg, void *data, unsigned int sz), unsigned int flags)"
+      },
+      "fastboot_publish": {
+        "addr": "0xFFFF000050F07C04",
+        "desc": "Publishes fastboot getvar variable key/value pair",
+        "signature": "void fastboot_publish(const char *name, const char *value)"
+      },
+      "fastboot_okay": {
+        "addr": "0xFFFF000050F07C68",
+        "desc": "Sends 'OKAY' fastboot response packet",
+        "signature": "void fastboot_okay(const char *reason)"
+      },
+      "fastboot_fail": {
+        "addr": "0xFFFF000050F07C8C",
+        "desc": "Sends 'FAIL' fastboot response packet with error description",
+        "signature": "void fastboot_fail(const char *reason)"
+      },
+      "fastboot_info": {
+        "addr": "0xFFFF000050F07CB0",
+        "desc": "Sends 'INFO' fastboot status line to host console",
+        "signature": "void fastboot_info(const char *msg)"
+      },
+      "fastboot_stop": {
+        "addr": "0xFFFF000050F07CF4",
+        "desc": "Quiesces and terminates USB fastboot gadget stack",
+        "signature": "void fastboot_stop(void)"
+      },
+      "fastboot_app_entry_ptr": {
+        "addr": "0xFFFF000050F99A80",
+        "desc": "Function pointer inside fastboot app descriptor",
+        "signature": "int (*fastboot_entry)(const void *app, void *args)"
+      },
+      "fastboot_app_stock_entry": {
+        "addr": "0xFFFF000050F05724",
+        "desc": "Stock fastboot entry point function"
+      },
+      "wdt_set_timeout": {
+        "addr": "0xFFFF000050F04CA8",
+        "desc": "Programs hardware watchdog timer duration in seconds",
+        "signature": "void wdt_set_timeout(u32 seconds)"
+      },
+      "wdt_pet": {
+        "addr": "0xFFFF000050F04CD8",
+        "desc": "Pets / restarts MT6789 hardware watchdog to prevent timeout reset",
+        "signature": "void wdt_pet(void)"
+      },
+      "platform_halt": {
+        "addr": "0xFFFF000050F0419C",
+        "desc": "Executes hardware shutdown or resets with specific reboot reason code",
+        "signature": "void platform_halt(int action, int reason)"
+      },
+      "get_suffix": {
+        "addr": "0xFFFF000050F14690",
+        "desc": "Returns pointer to current active A/B slot suffix string ('_a' or '_b')",
+        "signature": "const char *get_suffix(void)"
+      },
+      "set_active": {
+        "addr": "0xFFFF000050F146C4",
+        "desc": "Toggles active boot slot in persistent BCB / misc metadata",
+        "signature": "int set_active(const char *suffix)"
+      },
+      "kernel_decompress": {
+        "addr": "0xFFFF000050F0BD58",
+        "desc": "Decompresses LZ4 / Gzip kernel image from boot partition to DRAM (0x40000000)"
+      },
+      "cmdline_append": {
+        "addr": "0xFFFF000050F0F800",
+        "desc": "Appends argument string to Linux kernel boot parameters buffer"
+      },
+      "arch_disable_cache": {
+        "addr": "0xFFFF000050F1428C",
+        "desc": "Flushes and disables D-cache and I-cache before kernel handoff",
+        "signature": "void arch_disable_cache(u32 flags)"
+      },
+      "arch_disable_mmu_jump": {
+        "addr": "0xFFFF000050F140E8",
+        "desc": "Clears SCTLR_EL1.M (turns off MMU) and executes branch to physical address",
+        "signature": "void arch_clean_cache_disable_mmu_and_jump(u64 target, u64 a0, u64 a1, u64 a2, u64 a3)"
+      },
+      "boot_linux": {
+        "addr": "0xFFFF000050F14330",
+        "desc": "Stock Linux handoff preparation; masks DAIF, cleans cache, triggers SMC"
+      },
+      "smc_boot_linux_trampoline": {
+        "addr": "0xFFFF000050F0C3CC",
+        "desc": "Physical trampoline invoking SMC FID 0xC2000115 (MTK_SIP_KERNEL_BOOT_AARCH64)",
+        "anchor": "mov x4, #1; smc #0"
+      }
+    },
+    "bl2_ext": {
+      "_start": {
+        "addr": "0xFFFF000062F00000",
+        "desc": "BL2_EXT entry point in Secure EL3; sets EL3 stack and MMU"
+      },
+      "bootstrap2": {
+        "addr": "0xFFFF000062F049E4",
+        "desc": "Secondary EL3 thread; hardware power initialization, charging ICs"
+      },
+      "bl2_ext_boot_app_desc": {
+        "addr": "0xFFFF000062F78558",
+        "desc": "Application descriptor for bl2_ext_boot payload loader"
+      },
+      "app_load_bl33": {
+        "addr": "0xFFFF000062F04EE8",
+        "desc": "Carves physical memory for BL33 and BL31, stages binaries into DRAM"
+      },
+      "spsr_drop_el3": {
+        "addr": "0xFFFF000062F04FE8",
+        "desc": "Stock SPSR_EL3 value (0x3c5); sets Non-Secure EL1 execution level for BL33",
+        "anchor": "mov x4, #0x3c5; msr spsr_el3, x4"
+      },
+      "spsr_drop_el2": {
+        "addr": "0xFFFF000062F04FFC",
+        "desc": "Stock SPSR_EL2 value (0x3c5); sets Non-Secure EL1 execution level for BL33",
+        "anchor": "mov x4, #0x3c5; msr spsr_el2, x4"
+      },
+      "atf_handoff_jump": {
+        "addr": "0xFFFF000062F0C108",
+        "desc": "Cleans caches, turns off EL3 MMU, and branches to ATF BL31 at 0x48200000"
+      }
+    },
+    "aee": {
+      "kedump_init": {
+        "addr": "0xFFFF000063F01000",
+        "desc": "Initializes Exception Engine memory buffers and expdb persistence metadata"
+      }
+    }
+  },
+  "registers": {
+    "MT6789_WDT_BASE": "0x10007000",
+    "MT6789_WDT_MODE": "0x10007000",
+    "MT6789_WDT_LENGTH": "0x10007004",
+    "MT6789_WDT_RESTART": "0x10007008",
+    "MT6789_WDT_NONRST_REG": "0x10007020",
+    "MT6789_WDT_NONRST_REG2": "0x10007024",
+    "MT6789_DEVAPC_BASE": "0x1000EF00",
+    "MT6789_UART0_BASE": "0x11002000",
+    "MT6789_UFSHCI_BASE": "0x11270000",
+    "MT6789_MMSYS_BASE": "0x14000000",
+    "MT6789_DISP_OVL0_BASE": "0x14005000",
+    "FRAMEBUFFER_PHYS_0": "0xFE007000",
+    "FRAMEBUFFER_PHYS_1": "0xFEA41000"
+  },
+  "keycodes": {
+    "VOL_DOWN": 1,
+    "VOL_UP": 6,
+    "POWER": 8
+  }
+}

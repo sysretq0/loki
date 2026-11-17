@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MediaTek LK Device Map",
+  "description": "Defines partition layout, execution levels, and mapped function symbols for a MediaTek Little Kernel container.",
+  "type": "object",
+  "required": [
+    "device",
+    "soc",
+    "firmware_version",
+    "stock_lk_sha256",
+    "container_size",
+    "subpartitions",
+    "symbols"
+  ],
+  "properties": {
+    "device": { "type": "string" },
+    "manufacturer": { "type": "string" },
+    "soc": { "type": "string" },
+    "arch": { "type": "string", "enum": ["aarch64", "arm"] },
+    "firmware_version": { "type": "string" },
+    "stock_lk_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "container_size": { "type": "integer" },
+    "subpartitions": {
+      "type": "object",
+      "required": ["lk", "bl2_ext", "aee", "dtb"],
+      "properties": {
+        "lk": {
+          "type": "object",
+          "required": ["offset", "size", "load_addr", "el"],
+          "properties": {
+            "offset": { "type": "string" },
+            "size": { "type": "string" },
+            "load_addr": { "type": "string" },
+            "el": { "type": "integer", "enum": [1, 2] }
+          }
+        },
+        "bl2_ext": {
+          "type": "object",
+          "required": ["offset", "size", "load_addr", "el"],
+          "properties": {
+            "offset": { "type": "string" },
+            "size": { "type": "string" },
+            "load_addr": { "type": "string" },
+            "el": { "type": "integer", "enum": [3] }
+          }
+        },
+        "aee": {
+          "type": "object",
+          "required": ["offset", "size", "load_addr", "el"],
+          "properties": {
+            "offset": { "type": "string" },
+            "size": { "type": "string" },
+            "load_addr": { "type": "string" },
+            "el": { "type": "integer", "enum": [1] }
+          }
+        },
+        "dtb": {
+          "type": "object",
+          "required": ["offset", "size"],
+          "properties": {
+            "offset": { "type": "string" },
+            "size": { "type": "string" }
+          }
+        }
+      }
+    },
+    "symbols": {
+      "type": "object",
+      "required": ["lk", "bl2_ext"],
+      "properties": {
+        "lk": {
+          "type": "object",
+          "description": "Symbol virtual addresses in LK (BL33)"
+        },
+        "bl2_ext": {
+          "type": "object",
+          "description": "Symbol virtual addresses in BL2_EXT (EL3)"
+        },
+        "aee": {
+          "type": "object",
+          "description": "Symbol virtual addresses in AEE"
+        }
+      }
+    },
+    "registers": {
+      "type": "object",
+      "description": "Physical MMIO register addresses for SoC peripherals"
+    },
+    "keycodes": {
+      "type": "object",
+      "description": "Hardware keycode IDs detected by detect_key"
+    }
+  }
+}
