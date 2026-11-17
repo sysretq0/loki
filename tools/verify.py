@@ -5,9 +5,12 @@ verify.py — Automated Schema, Header, and Symbol Consistency Verification Suit
 
 Validates:
 1. All device symbol maps match schema/device.schema.json
-2. Device C headers (*.h) perfectly mirror their JSON maps (*.json)
-3. Zero-filled padding regions and unallocated flash bounds
-4. (Optional) Binary assertion against raw lk.img / extracted 00_lk.bin
+2. Bi-directional consistency between C headers (*.h) and JSON profiles (*.json)
+3. Zero-filled padding regions and dead-code cave bounds
+4. (Optional) Binary assertion against raw lk.img:
+   - Container mkimg header parsing and partition math
+   - Zero-filled memory & flash verification
+   - Byte-level hook pointer & branch opcode assertion
 """
 
 import os
@@ -28,14 +31,26 @@ def validate_json_syntax(path):
 
 def parse_header_defines(h_path):
     defines = {}
-    pattern = re.compile(r"^#define\s+([A-Za-z0-9_]+)\s+(0x[0-9A-Fa-f]+|[\d]+)ULL?", re.MULTILINE)
+    pattern = re.compile(r"^#define\s+([A-Za-z0-9_]+)\s+([A-Za-z0-9_]+|(?:0x[0-9A-Fa-f]+|[\d]+)ULL?)", re.MULTILINE)
     with open(h_path, "r", encoding="utf-8") as f:
         content = f.read()
+    
+    # First pass: collect literal numeric values
     for match in pattern.finditer(content):
         name = match.group(1)
         val_str = match.group(2)
-        val = int(val_str, 16) if val_str.startswith("0x") else int(val_str)
-        defines[name] = val
+        if val_str.startswith("0x"):
+            defines[name] = int(val_str.rstrip("ULL").rstrip("UL").rstrip("U"), 16)
+        elif val_str.isdigit():
+            defines[name] = int(val_str.rstrip("ULL").rstrip("UL").rstrip("U"))
+    
+    # Second pass: resolve single-level aliases
+    for match in pattern.finditer(content):
+        name = match.group(1)
+        val_str = match.group(2)
+        if name not in defines and val_str in defines:
+            defines[name] = defines[val_str]
+
     return defines
 
 def verify_device(json_path):
@@ -51,18 +66,40 @@ def verify_device(json_path):
         print(f"    -> Cross-checking with C header: {os.path.relpath(h_path, REPO_ROOT)}")
         defines = parse_header_defines(h_path)
         
-        # Verify symbols match
-        lk_syms = data.get("symbols", {}).get("lk", {})
-        for sym_name, sym_info in lk_syms.items():
-            def_name = f"ADDR_LK_{sym_name.upper()}"
-            if def_name in defines:
+        # 1. Forward check: JSON symbols -> Header defines
+        for sub_name in ["lk", "bl2_ext", "aee"]:
+            sub_syms = data.get("symbols", {}).get(sub_name, {})
+            prefix = f"ADDR_{sub_name.upper()}_"
+            for sym_name, sym_info in sub_syms.items():
+                clean_name = sym_name.upper()
+                def_name = f"{prefix}{clean_name}"
+                assert def_name in defines, f"Symbol {sym_name} from JSON missing in header as {def_name}"
                 expected_addr = int(sym_info["addr"], 16)
                 actual_addr = defines[def_name]
                 assert expected_addr == actual_addr, (
-                    f"Mismatch for {def_name}: JSON=0x{expected_addr:X}, Header=0x{actual_addr:X}"
+                    f"Address mismatch for {def_name}: JSON=0x{expected_addr:X}, Header=0x{actual_addr:X}"
                 )
 
-        # Verify zero regions if present
+        # 2. Reverse check: Header ADDR_* defines -> JSON symbols (prevent drift)
+        for def_name, def_val in defines.items():
+            if def_name.startswith("ADDR_LK_"):
+                sym_key = def_name[len("ADDR_LK_"):].lower()
+                # Accept known aliases
+                if sym_key == "entry": sym_key = "_start"
+                if sym_key == "arch_disable_mmu_jmp": sym_key = "arch_clean_cache_disable_mmu_and_jump"
+                if sym_key == "smc_boot_trampoline": sym_key = "smc_boot_linux_trampoline"
+                assert sym_key in data["symbols"]["lk"], f"Header define {def_name} not found in JSON symbols.lk"
+            elif def_name.startswith("ADDR_BL2_EXT_"):
+                sym_key = def_name[len("ADDR_BL2_EXT_"):].lower()
+                if sym_key == "entry": sym_key = "_start"
+                if sym_key == "spsr_routine": sym_key = "spsr_drop_routine"
+                if sym_key == "atf_jump": sym_key = "atf_handoff_jump"
+                assert sym_key in data["symbols"]["bl2_ext"], f"Header define {def_name} not found in JSON symbols.bl2_ext"
+            elif def_name.startswith("ADDR_AEE_"):
+                sym_key = def_name[len("ADDR_AEE_"):].lower()
+                assert sym_key in data["symbols"]["aee"], f"Header define {def_name} not found in JSON symbols.aee"
+
+        # 3. Verify zero regions if present
         zero_regs = data.get("zero_regions", {}).get("lk", {})
         for reg_name, reg_info in zero_regs.items():
             virt_def = f"{reg_name}_VIRT"
@@ -72,7 +109,7 @@ def verify_device(json_path):
             if size_def in defines:
                 assert reg_info["size_bytes"] == defines[size_def], f"Mismatch for {size_def}"
 
-        # Verify dead code if present
+        # 4. Verify dead code if present
         dead_codes = data.get("dead_code", {}).get("lk", {})
         for dc_name, dc_info in dead_codes.items():
             virt_def = f"{dc_name}_VIRT"
@@ -82,7 +119,24 @@ def verify_device(json_path):
             if size_def in defines:
                 assert dc_info["size_bytes"] == defines[size_def], f"Mismatch for {size_def}"
 
-        print("    -> C header and JSON definitions match perfectly.")
+        # 5. Verify hooks block matches C header sites
+        hooks = data.get("hooks", {})
+        hook_site_map = {
+            "HOOK_TARGET_INIT_CALL": "HOOK_SITE_TARGET_INIT_CALL",
+            "HOOK_APP_FASTBOOT": "HOOK_SITE_FASTBOOT_ENTRY_PTR",
+            "HOOK_APP_MTBOOT": "HOOK_SITE_MTBOOT_ENTRY_PTR",
+            "HOOK_KERNEL_DECOMP_CALL": "HOOK_SITE_KERNEL_DECOMP_CALL",
+            "HOOK_BL2_EXT_SPSR": "HOOK_SITE_BL2_EXT_SPSR",
+        }
+        for hook_key, def_site_name in hook_site_map.items():
+            if hook_key in hooks and def_site_name in defines:
+                expected_target = int(hooks[hook_key]["target"], 16)
+                actual_target = defines[def_site_name]
+                assert expected_target == actual_target, (
+                    f"Hook target mismatch for {hook_key}: JSON=0x{expected_target:X}, Header=0x{actual_target:X}"
+                )
+
+        print("    -> C header and JSON definitions match bi-directionally with zero drift.")
 
     return data
 
@@ -98,7 +152,7 @@ def verify_binary(data, lk_img_path):
         f"SHA256 mismatch! Expected {data['stock_lk_sha256']}, got {sha256}"
     )
 
-    # Check unallocated flash free space
+    # 1. Check unallocated flash free space
     unalloc = data.get("unallocated_flash")
     if unalloc:
         start = int(unalloc["offset_start"], 16)
@@ -109,17 +163,26 @@ def verify_binary(data, lk_img_path):
         print(f"    -> 100% pure zeros: {is_all_zero}")
         assert is_all_zero, "Unallocated flash space is not 100% zero-filled!"
 
-    # Unpack 00_lk.bin
-    lk_subpart = data["subpartitions"]["lk"]
-    lk_ofs = int(lk_subpart["offset"], 16)
-    # Scan for first subpartition payload (skip 512-byte mkimg header)
-    assert img_bytes[lk_ofs:lk_ofs+4] == b"\x88\x16\x88\x58", "Invalid MTK mkimg header"
-    magic, lk_payload_size = struct.unpack_from("<II", img_bytes, lk_ofs)
-    lk_bin = img_bytes[lk_ofs + 512 : lk_ofs + 512 + lk_payload_size]
-    print(f"    Extracted LK payload: {len(lk_bin):,} bytes")
+    # 2. Check mkimg container headers and subpartition layout
+    print("    Verifying mkimg container headers & partition math:")
+    for sub_id in ["lk", "bl2_ext", "aee", "dtb"]:
+        sub = data["subpartitions"][sub_id]
+        hdr_ofs = int(sub.get("header_offset", sub["offset"]), 16)
+        magic, dsize = struct.unpack_from("<II", img_bytes, hdr_ofs)
+        assert magic == 0x58881688, f"Invalid mkimg magic at 0x{hdr_ofs:06X} for {sub_id}"
+        expected_size = sub["size_bytes"]
+        assert dsize == expected_size, (
+            f"mkimg dsize mismatch for {sub_id}: header=0x{dsize:X} ({dsize}), expected=0x{expected_size:X} ({expected_size})"
+        )
+        print(f"      [{sub_id:>11}] Header @ 0x{hdr_ofs:06X} -> Payload: 0x{hdr_ofs+512:06X}..0x{hdr_ofs+512+dsize:06X} ({dsize:,} bytes)")
 
-    # Check zero regions in LK
-    base_virt = int(lk_subpart["load_addr"], 16)
+    # 3. Extract 00_lk.bin payload
+    lk_sub = data["subpartitions"]["lk"]
+    lk_hdr_ofs = int(lk_sub.get("header_offset", lk_sub["offset"]), 16)
+    lk_bin = img_bytes[lk_hdr_ofs + 512 : lk_hdr_ofs + 512 + lk_sub["size_bytes"]]
+    base_virt = int(lk_sub["load_addr"], 16)
+
+    # 4. Check zero regions in LK
     zero_regs = data.get("zero_regions", {}).get("lk", {})
     for reg_name, reg_info in zero_regs.items():
         ofs_start = int(reg_info["file_offset"], 16)
@@ -129,7 +192,7 @@ def verify_binary(data, lk_img_path):
         print(f"    Zero region {reg_name} [0x{ofs_start:06X}..0x{ofs_end:06X}] ({len(region_bytes)} bytes): pure zeros = {is_zero}")
         assert is_zero, f"{reg_name} contains non-zero data!"
 
-    # Check dead code caves in LK
+    # 5. Check dead code caves in LK
     dead_codes = data.get("dead_code", {}).get("lk", {})
     for dc_name, dc_info in dead_codes.items():
         ofs_start = int(dc_info["file_offset"], 16)
@@ -139,27 +202,85 @@ def verify_binary(data, lk_img_path):
         assert ofs_end <= len(lk_bin), f"Dead code {dc_name} out of bounds!"
         print(f"    Dead code cave {dc_name} [0x{ofs_start:06X}..0x{ofs_end:06X}] ({expected_size:,} bytes): valid bounds")
 
-    print("    -> Binary assertions verified successfully.")
+    # 6. Verify Stock Hook Entry Points & Branch Opcodes in Binary
+    print("    Verifying stock hook sites in binary:")
+    hooks = data.get("hooks", {})
+    for hook_name, hook_info in hooks.items():
+        target_va = int(hook_info["target"], 16)
+        # Only verify LK targets directly against lk_bin
+        if base_virt <= target_va < base_virt + len(lk_bin):
+            target_ofs = target_va - base_virt
+            if hook_info["type"] == "pointer_patch":
+                expected_entry = int(hook_info["stock_entry"], 16)
+                actual_ptr = struct.unpack_from("<Q", lk_bin, target_ofs)[0]
+                assert actual_ptr == expected_entry, (
+                    f"Stock entry mismatch for {hook_name} @ 0x{target_va:016X}: actual=0x{actual_ptr:016X}, expected=0x{expected_entry:016X}"
+                )
+                print(f"      [{hook_name}] Validated 64-bit pointer @ 0x{target_va:016X} -> 0x{actual_ptr:016X}")
+                if "stock_init" in hook_info:
+                    expected_init = int(hook_info["stock_init"], 16)
+                    actual_init = struct.unpack_from("<Q", lk_bin, target_ofs - 8)[0]
+                    assert actual_init == expected_init, (
+                        f"Stock init mismatch for {hook_name}: actual=0x{actual_init:016X}, expected=0x{expected_init:016X}"
+                    )
+            elif hook_info["type"] == "bl_opcode_patch":
+                expected_target = int(hook_info["stock_target"], 16)
+                ins_word = struct.unpack_from("<I", lk_bin, target_ofs)[0]
+                assert (ins_word & 0xFC000000) == 0x94000000, f"Expected BL instruction at 0x{target_va:016X}"
+                imm26 = ins_word & 0x03FFFFFF
+                if imm26 & 0x02000000: imm26 -= 0x04000000
+                branch_target = target_va + (imm26 << 2)
+                assert branch_target == expected_target, (
+                    f"BL branch target mismatch for {hook_name}: actual=0x{branch_target:016X}, expected=0x{expected_target:016X}"
+                )
+                print(f"      [{hook_name}] Validated BL opcode @ 0x{target_va:016X} -> 0x{branch_target:016X}")
+
+    print("    -> All binary assertions verified successfully.")
+
+def locate_firmware_image():
+    # 1. Command-line argument
+    if len(sys.argv) > 1:
+        if os.path.exists(sys.argv[1]):
+            return sys.argv[1]
+        print(f"[!] Warning: Specified firmware '{sys.argv[1]}' not found.")
+        return None
+    # 2. Environment variable
+    env_fw = os.environ.get("LOKI_FIRMWARE_IMG")
+    if env_fw:
+        if os.path.exists(env_fw):
+            return env_fw
+        print(f"[!] Warning: LOKI_FIRMWARE_IMG='{env_fw}' not found.")
+        return None
+    # 3. Known repository/convenience locations
+    candidates = [
+        os.path.join(REPO_ROOT, "firmware", "lk.img"),
+        "/work/firmware/advan_x1/lk.img"
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return None
 
 def main():
     print("=" * 64)
     print(" Loki Stock Symbol & Architecture Consistency Verifier")
     print("=" * 64)
 
-    # Verify all device profiles
     device_files = glob.glob(os.path.join(DEVICES_DIR, "**", "*.json"), recursive=True)
     if not device_files:
         print("[!] No device JSON profiles found in devices/")
         sys.exit(1)
 
+    target_fw = locate_firmware_image()
+
     for json_path in device_files:
         data = verify_device(json_path)
 
-        # Optional binary validation
-        default_fw = "/work/firmware/advan_x1/lk.img"
-        target_fw = sys.argv[1] if len(sys.argv) > 1 else (default_fw if os.path.exists(default_fw) else None)
-        if target_fw and os.path.exists(target_fw):
+        if target_fw:
             verify_binary(data, target_fw)
+        else:
+            print("\n[*] Notice: No firmware image provided; skipping binary assertions.")
+            print("    Set LOKI_FIRMWARE_IMG=<path/to/lk.img> to run binary audits.")
 
     print("\n[+] ALL DEVICE CONSISTENCY & REVERSE-ENGINEERING CHECKS PASSED.")
 

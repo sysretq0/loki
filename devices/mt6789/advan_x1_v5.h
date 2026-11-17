@@ -13,24 +13,35 @@
 
 #include <stdint.h>
 
-/* --- Subpartition Offsets inside Composite lk.img --- */
-#define SUBPART_LK_OFFSET            0x000000ULL
-#define SUBPART_LK_SIZE              0x0A3FB0ULL  /* 667,424 bytes */
+/* --- Subpartition Offsets & Extents inside Composite lk.img --- */
+#define MKIMG_HDR_SIZE               512ULL
+
+#define SUBPART_LK_OFFSET            0x000000ULL  /* mkimg header container offset */
+#define SUBPART_LK_PAYLOAD_OFFSET    0x000200ULL  /* raw payload container offset (header + 512) */
+#define SUBPART_LK_SIZE              0x0A2F20ULL  /* 667,424 bytes (raw execution payload) */
+#define SUBPART_LK_CONTAINER_SPAN    0x0A3FB0ULL  /* 671,664 bytes (total container span including certs) */
 #define SUBPART_LK_LOAD_VIRT         0xFFFF000050F00000ULL
 
-#define SUBPART_BL2_EXT_OFFSET       0x0A3FB0ULL
-#define SUBPART_BL2_EXT_SIZE         0x081ED0ULL  /* 527,904 bytes */
+#define SUBPART_BL2_EXT_OFFSET       0x0A3FB0ULL  /* mkimg header container offset */
+#define SUBPART_BL2_EXT_PAYLOAD_OFFSET 0x0A41B0ULL /* raw payload container offset */
+#define SUBPART_BL2_EXT_SIZE         0x080E20ULL  /* 527,904 bytes (raw execution payload) */
+#define SUBPART_BL2_EXT_CONTAINER_SPAN 0x081ED0ULL /* 532,176 bytes (total span including certs) */
 #define SUBPART_BL2_EXT_LOAD_VIRT    0xFFFF000062F00000ULL
 
-#define SUBPART_AEE_OFFSET           0x125E80ULL
-#define SUBPART_AEE_SIZE             0x0B61A0ULL  /* 741,608 bytes */
+#define SUBPART_AEE_OFFSET           0x125E80ULL  /* mkimg header container offset */
+#define SUBPART_AEE_PAYLOAD_OFFSET   0x126080ULL  /* raw payload container offset */
+#define SUBPART_AEE_SIZE             0x0B50E8ULL  /* 741,608 bytes (raw execution payload) */
+#define SUBPART_AEE_CONTAINER_SPAN   0x0B61A0ULL  /* 745,888 bytes (total span including certs) */
 #define SUBPART_AEE_LOAD_VIRT        0xFFFF000063F00000ULL
 
-#define SUBPART_DTB_OFFSET           0x1DC020ULL
-#define SUBPART_DTB_SIZE             0x02E300ULL  /* 189,175 bytes */
+#define SUBPART_DTB_OFFSET           0x1DC020ULL  /* mkimg header container offset */
+#define SUBPART_DTB_PAYLOAD_OFFSET   0x1DC220ULL  /* raw payload container offset */
+#define SUBPART_DTB_SIZE             0x02E2F7ULL  /* 189,175 bytes (raw DTB payload) */
+#define SUBPART_DTB_CONTAINER_SPAN   0x02F386ULL  /* total span including certs up to free space */
 
 /* --- Stock Little Kernel (LK / BL33) Verified Functions --- */
-#define ADDR_LK_ENTRY                0xFFFF000050F00000ULL
+#define ADDR_LK__START               0xFFFF000050F00000ULL
+#define ADDR_LK_ENTRY                ADDR_LK__START
 #define ADDR_LK_KMAIN                0xFFFF000050F048D8ULL
 #define ADDR_LK_THREAD_INIT_EARLY    0xFFFF000050F0EB7CULL
 #define ADDR_LK_ARCH_EARLY_INIT      0xFFFF000050F038A0ULL
@@ -81,19 +92,24 @@
 #define ADDR_LK_CMDLINE_APPEND       0xFFFF000050F0F800ULL
 #define ADDR_LK_FDT_SETPROP          0xFFFF000050F498E8ULL
 #define ADDR_LK_ARCH_DISABLE_CACHE   0xFFFF000050F1428CULL
-#define ADDR_LK_ARCH_DISABLE_MMU_JMP 0xFFFF000050F140E8ULL
+#define ADDR_LK_ARCH_CLEAN_CACHE_DISABLE_MMU_AND_JUMP 0xFFFF000050F140E8ULL
+#define ADDR_LK_ARCH_DISABLE_MMU_JMP ADDR_LK_ARCH_CLEAN_CACHE_DISABLE_MMU_AND_JUMP
 #define ADDR_LK_BOOT_LINUX           0xFFFF000050F14330ULL
-#define ADDR_LK_SMC_BOOT_TRAMPOLINE  0xFFFF000050F0C3CCULL
+#define ADDR_LK_SMC_BOOT_LINUX_TRAMPOLINE 0xFFFF000050F0C3CCULL
+#define ADDR_LK_SMC_BOOT_TRAMPOLINE  ADDR_LK_SMC_BOOT_LINUX_TRAMPOLINE
 
 /* Memory Allocation */
 #define ADDR_LK_MALLOC               0xFFFF000050F56FB4ULL
 #define ADDR_LK_FREE                 0xFFFF000050F570E4ULL
 
 /* --- Stock Bootloader Extension (BL2_EXT / EL3) Verified Functions --- */
-#define ADDR_BL2_EXT_ENTRY           0xFFFF000062F00000ULL
+#define ADDR_BL2_EXT__START          0xFFFF000062F00000ULL
+#define ADDR_BL2_EXT_ENTRY           ADDR_BL2_EXT__START
 #define ADDR_BL2_EXT_BOOTSTRAP2      0xFFFF000062F049E4ULL
-#define ADDR_BL2_EXT_SPSR_ROUTINE    0xFFFF000062F04FBCULL
-#define ADDR_BL2_EXT_ATF_JUMP        0xFFFF000062F0C108ULL
+#define ADDR_BL2_EXT_SPSR_DROP_ROUTINE 0xFFFF000062F04FBCULL
+#define ADDR_BL2_EXT_SPSR_ROUTINE    ADDR_BL2_EXT_SPSR_DROP_ROUTINE
+#define ADDR_BL2_EXT_ATF_HANDOFF_JUMP 0xFFFF000062F0C108ULL
+#define ADDR_BL2_EXT_ATF_JUMP        ADDR_BL2_EXT_ATF_HANDOFF_JUMP
 
 /* --- Stock Exception Engine (AEE / kedump) --- */
 #define ADDR_AEE_KEDUMP_INIT         0xFFFF000063F01000ULL

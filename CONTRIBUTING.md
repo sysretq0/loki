@@ -19,7 +19,7 @@ Thank you for contributing to the open MediaTek Little Kernel function and symbo
 
 3. **Verify function addresses:**
    * Use Radare2/Rizin (`tools/radare2/lk_map.r2`) or PyGhidra (`tools/pyghidra/analyze_lk.py`) to confirm entry points and cross-references.
-   * Refer to [`docs/REVERSE_ENGINEERING_GUIDE.md`](file:///work/bootloader/loki/docs/REVERSE_ENGINEERING_GUIDE.md) for detailed function identification recipes.
+   * Refer to [`docs/REVERSE_ENGINEERING_GUIDE.md`](docs/REVERSE_ENGINEERING_GUIDE.md) for detailed function identification recipes.
 
 4. **Create your device definition file:**
    * Path: `devices/<soc_name>/<device_codename>.json` (e.g. `devices/mt6789/advan_x1_v5.json`)

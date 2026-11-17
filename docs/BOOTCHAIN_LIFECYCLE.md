@@ -11,25 +11,29 @@
 In MediaTek architectures, the `lk` partition (and `lk_b` on A/B slot devices) is a **4 MiB multi-image container**. It does not hold a single binary; it packs multiple discrete sub-images compiled from distinct Little Kernel targets, each prefixed with an MTK `mkimg` header (`magic = 0x58881688`) and ASN.1 DER signature certificates (`cert1`, `cert2`):
 
 ```
-+--------------------------------------------------------------------------------------------------+
-|                              COMPOSITE lk.img PARTITION (4 MiB Flash)                            |
-+--------------------------------------------------------------------------------------------------+
-| Partition Offset | Sub-Image Name | Size (Bytes) | Domain / Privilege   | Load Virtual Address   |
-+------------------+----------------+--------------+----------------------+------------------------+
-| 0x000000         | lk             | 667,424 B    | BL33 / Non-Secure EL1| 0xFFFF000050F00000     |
-| 0x0A3120         | cert1          | 1,709 B      | ASN.1 DER Signature  | N/A                    |
-| 0x0A39D0         | cert2          | 982 B        | ASN.1 DER Certificate| N/A                    |
-| 0x0A3FB0         | bl2_ext        | 527,904 B    | BL2 / Secure EL3     | 0xFFFF000062F00000     |
-| 0x124FD0         | cert1          | 1,733 B      | ASN.1 DER Signature  | N/A                    |
-| 0x1258A0         | cert2          | 982 B        | ASN.1 DER Certificate| N/A                    |
-| 0x125E80         | aee            | 741,608 B    | Exception Engine/EL1 | 0xFFFF000063F00000     |
-| 0x1DB170         | cert1          | 1,733 B      | ASN.1 DER Signature  | N/A                    |
-| 0x1DBA40         | cert2          | 982 B        | ASN.1 DER Certificate| N/A                    |
-| 0x1DC020         | lk_main_dtb    | 189,175 B    | Base Device Tree     | FDT Staging in DRAM    |
-| 0x20A520         | cert1          | 1,709 B      | ASN.1 DER Signature  | N/A                    |
-| 0x20ADD0         | cert2          | 982 B        | ASN.1 DER Certificate| N/A                    |
-| 0x20B3A6..400000 | [Unallocated]  | 2,051,162 B  | Trailing flash space | Unused                 |
-+------------------+----------------+--------------+----------------------+------------------------+
++-----------------------------------------------------------------------------------------------------------------------+
+|                                        COMPOSITE lk.img PARTITION (4 MiB Flash)                                       |
++-------------------+----------------+--------------+-------------------+----------------------+--------------------+
+| Container Offset  | Sub-Image Name | Payload Size | Component Type    | Domain / Privilege   | Load Address (VA)  |
++-------------------+----------------+--------------+-------------------+----------------------+--------------------+
+| 0x000000..0x000200| lk (header)    | 512 B        | MTK mkimg Header  | Container Metadata   | N/A                |
+| 0x000200..0x0A3120| lk (payload)   | 667,424 B    | Little Kernel 2   | BL33 / Non-Secure EL1| 0xFFFF000050F00000 |
+| 0x0A3120..0x0A39D0| cert1          | 1,709 B      | ASN.1 DER Header  | Signature Descriptor | N/A                |
+| 0x0A39D0..0x0A3FB0| cert2          | 982 B        | ASN.1 DER Header  | Certificate Key Data | N/A                |
+| 0x0A3FB0..0x0A41B0| bl2_ext (hdr)  | 512 B        | MTK mkimg Header  | Container Metadata   | N/A                |
+| 0x0A41B0..0x124FD0| bl2_ext (pay)  | 527,904 B    | Bootloader Ext.   | BL2 / Secure EL3     | 0xFFFF000062F00000 |
+| 0x124FD0..0x1258A0| cert1          | 1,733 B      | ASN.1 DER Header  | Signature Descriptor | N/A                |
+| 0x1258A0..0x125E80| cert2          | 982 B        | ASN.1 DER Header  | Certificate Key Data | N/A                |
+| 0x125E80..0x126080| aee (header)   | 512 B        | MTK mkimg Header  | Container Metadata   | N/A                |
+| 0x126080..0x1DB168| aee (payload)  | 741,608 B    | Exception Engine  | Exception Core / EL1 | 0xFFFF000063F00000 |
+| 0x1DB168..0x1DBA40| cert1          | 1,733 B      | ASN.1 DER Header  | Signature Descriptor | N/A                |
+| 0x1DBA40..0x1DC020| cert2          | 982 B        | ASN.1 DER Header  | Certificate Key Data | N/A                |
+| 0x1DC020..0x1DC220| dtb (header)   | 512 B        | MTK mkimg Header  | Container Metadata   | N/A                |
+| 0x1DC220..0x20A517| lk_main_dtb    | 189,175 B    | Device Tree Blob  | Flattened Device Tree| Staged in DRAM     |
+| 0x20A517..0x20ADD0| cert1          | 1,709 B      | ASN.1 DER Header  | Signature Descriptor | N/A                |
+| 0x20ADD0..0x20B3A6| cert2          | 982 B        | ASN.1 DER Header  | Certificate Key Data | N/A                |
+| 0x20B3A6..0x400000| [Unallocated]  | 2,051,162 B  | Trailing Free     | Pure 0x00 Space      | Unallocated (1.96M)|
++-------------------+----------------+--------------+-------------------+----------------------+--------------------+
 ```
 
 ---

@@ -103,27 +103,50 @@ def analyze_deadcode(binary_path, base_virt=DEFAULT_LK_LOAD_VIRT):
 
     print("\n[+] Dead code analysis complete. All cave boundaries verified.")
 
-def main():
-    if len(sys.argv) < 2:
-        default_bin = "/work/firmware/advan_x1/lk.img"
-        if os.path.exists(default_bin):
-            # Extract 00_lk.bin in-memory for quick analysis
-            with open(default_bin, "rb") as f:
-                img = f.read()
-            lk_data = img[512:512+667424]
-            tmp_lk = "/tmp/00_lk_scan.bin"
-            with open(tmp_lk, "wb") as f:
-                f.write(lk_data)
-            analyze_deadcode(tmp_lk)
-            os.remove(tmp_lk)
-            sys.exit(0)
-        else:
-            print(f"Usage: {sys.argv[0]} <path/to/00_lk.bin> [base_virtual_addr]")
-            sys.exit(1)
+def locate_firmware_image():
+    if len(sys.argv) > 1:
+        if os.path.exists(sys.argv[1]):
+            return sys.argv[1]
+        print(f"[!] Warning: Specified firmware '{sys.argv[1]}' not found.")
+        return None
+    env_fw = os.environ.get("LOKI_FIRMWARE_IMG")
+    if env_fw:
+        if os.path.exists(env_fw):
+            return env_fw
+        print(f"[!] Warning: LOKI_FIRMWARE_IMG='{env_fw}' not found.")
+        return None
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    candidates = [
+        os.path.join(repo_root, "firmware", "lk.img"),
+        "/work/firmware/advan_x1/lk.img"
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return None
 
-    bin_path = sys.argv[1]
-    base_virt = int(sys.argv[2], 16) if len(sys.argv) > 2 else DEFAULT_LK_LOAD_VIRT
-    analyze_deadcode(bin_path, base_virt)
+def main():
+    fw_path = locate_firmware_image()
+    if fw_path:
+        with open(fw_path, "rb") as f:
+            img = f.read()
+        # If it is an mkimg container, extract 00_lk.bin payload
+        if len(img) >= 512 and struct.unpack_from("<I", img, 0)[0] == 0x58881688:
+            lk_data = img[512 : 512 + 667424]
+        else:
+            lk_data = img
+        tmp_lk = "/tmp/00_lk_scan.bin"
+        with open(tmp_lk, "wb") as f:
+            f.write(lk_data)
+        base_virt = int(sys.argv[2], 16) if len(sys.argv) > 2 else DEFAULT_LK_LOAD_VIRT
+        analyze_deadcode(tmp_lk, base_virt)
+        if os.path.exists(tmp_lk):
+            os.remove(tmp_lk)
+    else:
+        print("[*] Notice: No firmware binary found.")
+        print(f"Usage: {sys.argv[0]} <path/to/lk.img|00_lk.bin> [base_virtual_addr]")
+        print("  Or set LOKI_FIRMWARE_IMG=<path/to/lk.img>")
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()

@@ -10,32 +10,48 @@
     "lk": {
       "name": "Little Kernel 2 (BL33)",
       "offset": "0x000000",
-      "size": "0x0A3FB0",
+      "size": "0x0A2F20",
       "size_bytes": 667424,
+      "header_offset": "0x000000",
+      "payload_offset": "0x000200",
+      "payload_size": "0x0A2F20",
+      "container_span": "0x0A3FB0",
       "load_addr": "0xFFFF000050F00000",
       "el": 1
     },
     "bl2_ext": {
       "name": "Bootloader Extension (BL2_EXT)",
       "offset": "0x0A3FB0",
-      "size": "0x081ED0",
+      "size": "0x080E20",
       "size_bytes": 527904,
+      "header_offset": "0x0A3FB0",
+      "payload_offset": "0x0A41B0",
+      "payload_size": "0x080E20",
+      "container_span": "0x081ED0",
       "load_addr": "0xFFFF000062F00000",
       "el": 3
     },
     "aee": {
       "name": "Android Exception Engine (AEE / kedump)",
       "offset": "0x125E80",
-      "size": "0x0B61A0",
+      "size": "0x0B50E8",
       "size_bytes": 741608,
+      "header_offset": "0x125E80",
+      "payload_offset": "0x126080",
+      "payload_size": "0x0B50E8",
+      "container_span": "0x0B61A0",
       "load_addr": "0xFFFF000063F00000",
       "el": 1
     },
     "dtb": {
       "name": "LK Main Device Tree (lk_main_dtb)",
       "offset": "0x1DC020",
-      "size": "0x02E300",
+      "size": "0x02E2F7",
       "size_bytes": 189175,
+      "header_offset": "0x1DC020",
+      "payload_offset": "0x1DC220",
+      "payload_size": "0x02E2F7",
+      "container_span": "0x02F386",
       "load_addr": "DRAM staging",
       "el": null
     }
@@ -223,6 +239,16 @@
       "smc_boot_linux_trampoline": {
         "addr": "0xFFFF000050F0C3CC",
         "desc": "Physical trampoline invoking SMC FID 0xC2000115 (MTK_SIP_KERNEL_BOOT_AARCH64)"
+      },
+      "malloc": {
+        "addr": "0xFFFF000050F56FB4",
+        "desc": "Little Kernel dlmalloc heap allocation function",
+        "signature": "void *malloc(size_t size)"
+      },
+      "free": {
+        "addr": "0xFFFF000050F570E4",
+        "desc": "Little Kernel dlmalloc heap free function",
+        "signature": "void free(void *ptr)"
       }
     },
     "bl2_ext": {
@@ -321,7 +347,8 @@
     "HOOK_APP_MTBOOT": {
       "type": "pointer_patch",
       "target": "0xFFFF000050F99AA8",
-      "stock_entry": "0xFFFF000050F0BEF0",
+      "stock_entry": "0xFFFF000050F0C87C",
+      "stock_init": "0xFFFF000050F0C768",
       "desc": "Android boot (mt_boot) app descriptor entry routine pointer"
     },
     "HOOK_TARGET_INIT_CALL": {

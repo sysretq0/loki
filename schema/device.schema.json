@@ -28,8 +28,14 @@
           "type": "object",
           "required": ["offset", "size", "load_addr", "el"],
           "properties": {
+            "name": { "type": "string" },
             "offset": { "type": "string" },
             "size": { "type": "string" },
+            "size_bytes": { "type": "integer" },
+            "header_offset": { "type": "string" },
+            "payload_offset": { "type": "string" },
+            "payload_size": { "type": "string" },
+            "container_span": { "type": "string" },
             "load_addr": { "type": "string" },
             "el": { "type": "integer", "enum": [1, 2] }
           }
@@ -38,8 +44,14 @@
           "type": "object",
           "required": ["offset", "size", "load_addr", "el"],
           "properties": {
+            "name": { "type": "string" },
             "offset": { "type": "string" },
             "size": { "type": "string" },
+            "size_bytes": { "type": "integer" },
+            "header_offset": { "type": "string" },
+            "payload_offset": { "type": "string" },
+            "payload_size": { "type": "string" },
+            "container_span": { "type": "string" },
             "load_addr": { "type": "string" },
             "el": { "type": "integer", "enum": [3] }
           }
@@ -48,8 +60,14 @@
           "type": "object",
           "required": ["offset", "size", "load_addr", "el"],
           "properties": {
+            "name": { "type": "string" },
             "offset": { "type": "string" },
             "size": { "type": "string" },
+            "size_bytes": { "type": "integer" },
+            "header_offset": { "type": "string" },
+            "payload_offset": { "type": "string" },
+            "payload_size": { "type": "string" },
+            "container_span": { "type": "string" },
             "load_addr": { "type": "string" },
             "el": { "type": "integer", "enum": [1] }
           }
@@ -58,8 +76,14 @@
           "type": "object",
           "required": ["offset", "size"],
           "properties": {
+            "name": { "type": "string" },
             "offset": { "type": "string" },
-            "size": { "type": "string" }
+            "size": { "type": "string" },
+            "size_bytes": { "type": "integer" },
+            "header_offset": { "type": "string" },
+            "payload_offset": { "type": "string" },
+            "payload_size": { "type": "string" },
+            "container_span": { "type": "string" }
           }
         }
       }
