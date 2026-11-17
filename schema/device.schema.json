@@ -23,6 +23,9 @@
     "stock_tee_a_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "stock_tee_b_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "stock_preloader_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "stock_vendor_boot_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "stock_dtbo_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "stock_base_dtb_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "container_size": { "type": "integer" },
     "tee_partitions": { "type": "object" },
     "subpartitions": {
@@ -205,6 +208,10 @@
     "dead_code": {
       "type": "object",
       "description": "Hardware- or build-specific unreferenced code regions (caves) safe for in-situ payload placement"
+    },
+    "device_tree_pipeline": {
+      "type": "object",
+      "description": "MediaTek Device Tree Pipeline architecture across LK, DTBO, vendor_boot, and OS handoff"
     }
   }
 }

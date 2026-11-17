@@ -1,16 +1,16 @@
 # loki
 
-> **MediaTek Little Kernel (LK), BL2_EXT, ARM Trusted Firmware (ATF BL31) & AEE Reverse-Engineering & Symbol Map Database**
+> **MediaTek Complete Bootchain Mapping, Reverse-Engineering & Symbol Database (BROM → Preloader → BL2_EXT → ATF BL31 → LK BL33 → Device Tree Pipeline → OS Handoff)**
 
-`loki` is an open-source reverse-engineering framework and symbol database for MediaTek bootchains. It maps partition layouts, execution levels, and stock function addresses across composite containers (`lk.img`, `tee.img`), providing discovery tools and recipes across **PyGhidra**, **Radare2**, **Rizin**, and **Capstone**.
+`loki` is an open-source reverse-engineering framework, symbol database, and architectural mapping tool for MediaTek bootchains. It maps partition layouts, execution privilege levels (EL3/EL1), stock function addresses, hardware strapping selectors, and dynamic firmware pipelines across composite containers (`preloader.img`, `tee.img`, `lk.img`, `dtbo.img`, and `vendor_boot.img`), providing discovery tools and recipes across **PyGhidra**, **Radare2**, **Rizin**, and **Capstone**.
 
 ---
 
 ## 1. Supported SoCs & Device Mappings
 
-| SoC | Device | Baseline | Container SHA-256 (lk.img) | TEE SHA-256 (tee.img) | Preloader SHA-256 (preloader.img) | Mapping File |
-|---|---|---|---|---|---|---|
-| **MediaTek MT6789** (Helio G99 / MT8781) | ADVAN X1 | `v5` (Retail) | `a11516b640cfdadfc616dcca9db0160ad72dd473a035830b08ed5802883ae834` | `0a961a9940f01090005bf5ce1cd33d58c835f8d0925ba28bd187b114c582db44` | `f1cedb6912be99cbedc2fc49b0033e6067dda08fc836b2d3900e634e71b35d50` | [`devices/mt6789/advan_x1_v5.json`](devices/mt6789/advan_x1_v5.json) |
+| SoC | Device | Baseline | Container SHA-256 (lk.img) | TEE SHA-256 (tee.img) | Preloader SHA-256 (preloader.img) | Base DTB SHA-256 (lk/vendor_boot) | Mapping File |
+|---|---|---|---|---|---|---|---|
+| **MediaTek MT6789** (Helio G99 / MT8781) | ADVAN X1 | `v5` (Retail) | `a11516b640cfdadfc616dcca9db0160ad72dd473a035830b08ed5802883ae834` | `0a961a9940f01090005bf5ce1cd33d58c835f8d0925ba28bd187b114c582db44` | `f1cedb6912be99cbedc2fc49b0033e6067dda08fc836b2d3900e634e71b35d50` | `2285a2859d1e3c8a375b752f687b16b4e494ae41d0211a507bb99d131524e363` | [`devices/mt6789/advan_x1_v5.json`](devices/mt6789/advan_x1_v5.json) |
 
 ---
 
@@ -132,6 +132,29 @@ The MediaTek Preloader executes in internal SRAM (`0x00201000`) at AArch32 Secur
 > [!NOTE] Internal SRAM Execution & Entry
 > The GFH header declares `load_addr = 0x00200F10` and `jump_offset = 0xF0`. The execution base in internal SRAM is exactly `0x00200F10 + 0xF0 = 0x00201000`. The entry code zeroes `r0` through `lr`, queries `MIDR` for Cortex-A55 (`0xD03`/`0xD04`), sets SVC mode (`0xD3`), initializes clocks/PMIC/EMI, and handles the USB download protocol before loading BL2_EXT/ATF.
 
+### 3.3 Device Tree Pipeline Architecture (`lk_main_dtb`, `dtbo.img`, `vendor_boot.img`)
+
+MediaTek Little Kernel executes a multi-stage Device Tree pipeline that merges, mutates, and appends hardware reservations before handing execution to the kernel:
+
+```
++-----------------------------------------------------------------------------------------------------------------------+
+|                                        DEVICE TREE MUTATION & HANDOFF PIPELINE                                        |
++-------------------+----------------+--------------+-------------------+----------------------+--------------------+
+| Container / Stage | Component Name | Payload Size | Verification Hash | Operation in LK      | Memory Target (PA) |
++-------------------+----------------+--------------+-------------------+----------------------+--------------------+
+| lk.img / subpart 3| lk_main_dtb    | 189,175 B    | SHA-256: 2285a285 | Staged in DRAM       | 0x47C80000         |
+| vendor_boot.img   | dt_table[0]    | 189,175 B    | SHA-256: 2285a285 | 100% Binary Identical| GKI fallback       |
+| dtbo.img (flash)  | dtbo_entry0    | 52,589 B     | SHA-256: 91d75534 | Applied via overlay  | Merged in DRAM     |
+| Memory Merged FDT | post-overlay   | 241,764 B    | N/A               | Peripheral inits     | DRAM buffer        |
+| LK set_fdt Hooks  | dynamic patch  | N/A          | N/A               | LCM, UFS mmc0, AVB   | DRAM buffer        |
+| MBLOCK Injection  | reserved-nodes | 31 regions   | N/A               | /reserved-memory     | DRAM buffer        |
+| Final Live FDT    | runtime handoff| 253,152 B    | Matches /sys/fdt  | Kernel DTB pointer   | 0x47C80000         |
++-------------------+----------------+--------------+-------------------+----------------------+--------------------+
+```
+
+> [!TIP] Binary Identity Proof & Detailed Analysis
+> For the complete 6-stage lifecycle breakdown and the catalog of all 31 dynamically generated `mblock` physical memory reservations, see [Device Tree Pipeline Architecture](docs/DEVICE_TREE_PIPELINE.md).
+
 ---
 
 ## 4. Stock Bootchain Lifecycle Overview
@@ -143,7 +166,8 @@ The MediaTek Preloader executes in internal SRAM (`0x00201000`) at AArch32 Secur
 [ Preloader (BL2, EL3) ]
        │
        │ 1. Inits PMIC & Calibrates LPDDR4X DRAM
-       │ 2. Stages Sub-Image 1 (bl2_ext) into DRAM
+       │ 2. Sets up early mblock allocations (dramc, emi_mbist, pl-drambuf)
+       │ 3. Stages Sub-Image 1 (bl2_ext) into DRAM @ 0x62F00000
        ▼
 [ bl2_ext (Secure EL3) @ 0xFFFF000062F00000 ]
        │
@@ -152,19 +176,25 @@ The MediaTek Preloader executes in internal SRAM (`0x00201000`) at AArch32 Secur
        │ 3. Sets SPSR drop to Non-Secure EL1h (0x3c5)
        │ 4. Branches to ATF BL31
        ▼
-[ ARM Trusted Firmware (BL31, EL3) ]
+[ ARM Trusted Firmware (BL31, EL3) @ 0x48200000 ]
        │
-       │ Configures PSCI & drops privilege via SPSR
+       │ 1. Registers Secure Monitor & installs VBAR_EL3 @ 0x4821F800
+       │ 2. Registers PSCI and 64 MediaTek SiP SMC services
+       │ 3. Drops privilege via SPSR to Non-Secure EL1 Little Kernel
        ▼
 [ Little Kernel (BL33, Non-Secure EL1) @ 0xFFFF000050F00000 ]
        │
        │ 1. Initializes MMU (TTBR0/TTBR1), heap, generic timer, UART0
-       │ 2. Spawns bootstrap2 thread -> Inits DSI Display & UFS Storage
+       │ 2. Spawns bootstrap2 thread -> Inits DSI Display (0xFE007000) & UFS Storage
        │ 3. Evaluates hardware keys & reboot reasons
-       │ 4. Decompresses kernel image (0x50F0BD58) & appends bootargs
-       │ 5. Cleans caches, disables MMU, executes SMC 0xC2000115
+       │ 4. Decompresses kernel image (0x50F0BD58) to 0x40000000
+       │ 5. Executes Device Tree Pipeline (lk_main_dtb + dtbo -> 31 mblocks -> 0x47C80000)
+       │ 6. Cleans caches, disables MMU, executes SMC 0xC2000115 (MTK_SIP_KERNEL_BOOT_AARCH64)
        ▼
 [ Linux Kernel (Non-Secure EL1) ]
+       ├── PC      : 0x40000000 (Decompressed 64-bit kernel)
+       ├── Ramdisk : 0x66F00000 (52,727,689 B)
+       └── DTB     : 0x47C80000 (253,152 B merged & mutated FDT)
 ```
 
 ---
@@ -213,6 +243,7 @@ See [Safe Hook Entry Points & Zero-Region Catalog](docs/HOOK_ENTRY_POINTS.md) an
 
 ## 7. Documentation
 
+* [Device Tree Pipeline Architecture](docs/DEVICE_TREE_PIPELINE.md): In-depth analysis of base DTB, DTBO overlay, LK dynamic mutations, and 31 MBLOCK physical memory reservations.
 * [Hardware-Specific Dead Code Map](docs/DEAD_CODE_MAP.md): Analysis of unreached driver caves, strapping selectors, and large payload placement.
 * [Safe Hook Entry Points & Zero-Region Catalog](docs/HOOK_ENTRY_POINTS.md): Comprehensive catalog of 17 safe hook sites and zero-padding placement.
 * [Bootchain Lifecycle Deep-Dive](docs/BOOTCHAIN_LIFECYCLE.md): Full analysis of BROM, Preloader, BL2_EXT, ATF, LK, and Linux Kernel handoff.

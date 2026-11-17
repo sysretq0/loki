@@ -32,6 +32,78 @@ DEFAULT_LOAD_VIRT = {
 GFH_MAGIC = 0x014D4D4D  # "MMM\x01"
 GFH_HDR_SIZE = 0xF0     # 240 bytes standard GFH block
 
+# Device Tree / Android DT Table Constants
+DT_TABLE_MAGIC = 0xd7b7ab1e
+FDT_MAGIC = 0xd00dfeed
+
+DtTableHeader = namedtuple(
+    "DtTableHeader",
+    ["magic", "total_size", "hdr_size", "entry_size", "entry_count", "entries_offset", "page_size", "version"]
+)
+
+def parse_dt_table_header(buffer: bytes, offset: int = 0) -> Optional[DtTableHeader]:
+    """
+    Parses an Android DT table header (magic: 0xd7b7ab1e) at the given offset.
+    Returns DtTableHeader namedtuple or None if invalid.
+    """
+    if offset + 32 > len(buffer):
+        return None
+    magic, total_size, hdr_size, entry_size, entry_count, entries_offset, page_size, version = struct.unpack_from(">8I", buffer, offset)
+    if magic != DT_TABLE_MAGIC:
+        return None
+    return DtTableHeader(
+        magic=magic,
+        total_size=total_size,
+        hdr_size=hdr_size,
+        entry_size=entry_size,
+        entry_count=entry_count,
+        entries_offset=entries_offset,
+        page_size=page_size,
+        version=version
+    )
+
+def extract_dtbo_entry(buffer: bytes, index: int = 0) -> Optional[bytes]:
+    """
+    Extracts the raw FDT payload for entry `index` from a dtbo.img container.
+    """
+    hdr = parse_dt_table_header(buffer, 0)
+    if not hdr or index >= hdr.entry_count:
+        return None
+    e_pos = hdr.entries_offset + index * hdr.entry_size
+    if e_pos + 8 > len(buffer):
+        return None
+    dt_size, dt_offset = struct.unpack_from(">2I", buffer, e_pos)
+    if dt_offset + dt_size > len(buffer):
+        return None
+    return buffer[dt_offset : dt_offset + dt_size]
+
+def extract_vendor_boot_dtb(buffer: bytes) -> Optional[bytes]:
+    """
+    Extracts the base device tree blob from an Android vendor_boot image (v3/v4).
+    Resolves both raw FDT blobs and nested Android DT table headers.
+    """
+    if len(buffer) < 2112 or buffer[:8] != b"VNDRBOOT":
+        return None
+    page_size = struct.unpack_from("<I", buffer, 0x0C)[0]
+    ramdisk_size = struct.unpack_from("<I", buffer, 0x18)[0]
+    hdr_size = struct.unpack_from("<I", buffer, 0x830)[0]
+    dtb_size = struct.unpack_from("<I", buffer, 0x834)[0]
+
+    hdr_pages = (hdr_size + page_size - 1) // page_size
+    ramdisk_pages = (ramdisk_size + page_size - 1) // page_size
+    dtb_offset = (hdr_pages + ramdisk_pages) * page_size
+
+    if dtb_offset + dtb_size > len(buffer):
+        return None
+
+    dtb_blob = buffer[dtb_offset : dtb_offset + dtb_size]
+    if len(dtb_blob) >= 4 and dtb_blob[:4] == struct.pack(">I", DT_TABLE_MAGIC):
+        return extract_dtbo_entry(dtb_blob, 0)
+    elif len(dtb_blob) >= 4 and dtb_blob[:4] == struct.pack(">I", FDT_MAGIC):
+        return dtb_blob
+
+    return None
+
 GfhFileInfo = namedtuple(
     "GfhFileInfo",
     ["offset", "magic", "file_type", "flash_dev", "sig_type", "load_addr", "total_size", "hdr_size", "sig_size", "jump_offset"]
@@ -222,6 +294,72 @@ def locate_preloader_image(arg: Optional[str] = None, repo_root: Optional[str] =
         os.path.join(repo_root, "firmware", "preloader.img"),
         "/work/firmware/advan_x1/preloader.img",
         "/work/firmware/advan_x1_v4/preloader_k6789v1_64.bin",
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return os.path.abspath(c)
+
+    return None
+
+def locate_dtbo_image(arg: Optional[str] = None, repo_root: Optional[str] = None) -> Optional[str]:
+    """
+    Resolves the stock dtbo.img container path across:
+    1. CLI argument override
+    2. LOKI_DTBO_IMG environment variable
+    3. Common repository / system firmware directories
+    """
+    if arg:
+        if os.path.exists(arg):
+            return os.path.abspath(arg)
+        print(f"[!] Warning: Specified DTBO image '{arg}' not found.")
+        return None
+
+    env_dtbo = os.environ.get("LOKI_DTBO_IMG")
+    if env_dtbo:
+        if os.path.exists(env_dtbo):
+            return os.path.abspath(env_dtbo)
+        print(f"[!] Warning: LOKI_DTBO_IMG='{env_dtbo}' not found.")
+        return None
+
+    if repo_root is None:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    candidates = [
+        os.path.join(repo_root, "firmware", "dtbo.img"),
+        "/work/firmware/advan_x1/dtbo.img",
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return os.path.abspath(c)
+
+    return None
+
+def locate_vendor_boot_image(arg: Optional[str] = None, repo_root: Optional[str] = None) -> Optional[str]:
+    """
+    Resolves the stock vendor_boot.img container path across:
+    1. CLI argument override
+    2. LOKI_VENDOR_BOOT_IMG environment variable
+    3. Common repository / system firmware directories
+    """
+    if arg:
+        if os.path.exists(arg):
+            return os.path.abspath(arg)
+        print(f"[!] Warning: Specified vendor_boot image '{arg}' not found.")
+        return None
+
+    env_vb = os.environ.get("LOKI_VENDOR_BOOT_IMG")
+    if env_vb:
+        if os.path.exists(env_vb):
+            return os.path.abspath(env_vb)
+        print(f"[!] Warning: LOKI_VENDOR_BOOT_IMG='{env_vb}' not found.")
+        return None
+
+    if repo_root is None:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    candidates = [
+        os.path.join(repo_root, "firmware", "vendor_boot.img"),
+        "/work/firmware/advan_x1/vendor_boot.img",
     ]
     for c in candidates:
         if os.path.exists(c):

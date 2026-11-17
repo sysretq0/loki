@@ -126,8 +126,12 @@ In MediaTek architectures, the `lk` partition (and `lk_b` on A/B slot devices) i
 |    • Loads boot / recovery partition from UFS into DRAM via bio_read() (0x50F166C8)              |
 |    • Decompresses kernel at 0x50F0BD58 (LZ4/Gzip to 0x40000000)                                  |
 |    • Injects command line arguments via cmdline_append() (0x50F0F800)                            |
-|    • Merges lk_main_dtb with dtbo.img and populates /chosen node                                 |
-|    • Calls boot_linux() at 0xFFFF000050F14330:                                                   |
+|    • Executes Device Tree Pipeline (see docs/DEVICE_TREE_PIPELINE.md):                           |
+|         - Merges lk_main_dtb (189,175 B) with dtbo.img (52,589 B) -> 241,764 B                   |
+|         - Runs set_fdt hooks (lcm_phandle, update_mmc_dts, avb_cmdline, chipid)                 |
+|         - Injects 31 mblock physical memory reservations into /reserved-memory -> 253,152 B       |
+|    • Calls boot_linux_fdt() at 0xFFFF000050F14330:                                               |
+|         - Staged addresses: Kernel=0x40000000, Ramdisk=0x66F00000, DTB=0x47C80000                |
 |         - Masks DAIF (msr daifset, #0x2)                                                         |
 |         - Flushes caches to PoC via arch_disable_cache(3) at 0x50F1428C                          |
 |         - Calls arch_clean_cache_disable_mmu_and_jump() at 0x50F140E8:                           |

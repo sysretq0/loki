@@ -29,6 +29,10 @@ from common import (
     locate_firmware_image,
     locate_tee_image,
     locate_preloader_image,
+    locate_dtbo_image,
+    locate_vendor_boot_image,
+    extract_dtbo_entry,
+    extract_vendor_boot_dtb,
     parse_mkimg_header,
     parse_gfh_header,
     decode_aarch64_branch_target,
@@ -228,6 +232,17 @@ def verify_binary(data, lk_img_path):
         )
         print(f"      [{sub_id:>11}] Header @ 0x{hdr_ofs:06X} -> Payload: 0x{hdr.payload_offset:06X}..0x{hdr.payload_offset+hdr.payload_size:06X} ({hdr.payload_size:,} bytes)")
 
+    # 2b. Check DTB subpartition hash
+    if "stock_base_dtb_sha256" in data and "dtb" in data.get("subpartitions", {}):
+        dtb_sub = data["subpartitions"]["dtb"]
+        dtb_hdr_ofs = int(dtb_sub.get("header_offset", dtb_sub["offset"]), 16)
+        dtb_payload = img_bytes[dtb_hdr_ofs + 512 : dtb_hdr_ofs + 512 + dtb_sub["size_bytes"]]
+        dtb_sha256 = hashlib.sha256(dtb_payload).hexdigest()
+        assert dtb_sha256.lower() == data["stock_base_dtb_sha256"].lower(), (
+            f"DTB payload SHA256 mismatch! Expected {data['stock_base_dtb_sha256']}, got {dtb_sha256}"
+        )
+        print(f"      [     dtb_base] Validated lk_main_dtb SHA256: {dtb_sha256}")
+
     # 3. Extract 00_lk.bin payload
     lk_sub = data["subpartitions"]["lk"]
     lk_hdr_ofs = int(lk_sub.get("header_offset", lk_sub["offset"]), 16)
@@ -384,6 +399,56 @@ def verify_preloader_binary(data, pl_img_path):
 
     print("    -> All Preloader binary assertions verified successfully.")
 
+def verify_dtbo_binary(data, dtbo_img_path):
+    print(f"\n[*] Auditing stock DTBO firmware binary: {dtbo_img_path}")
+    with open(dtbo_img_path, "rb") as f:
+        img_bytes = f.read()
+
+    sha256 = hashlib.sha256(img_bytes).hexdigest()
+    print(f"    Container size: {len(img_bytes):,} bytes")
+    print(f"    Container SHA256: {sha256}")
+    if "stock_dtbo_sha256" in data:
+        assert sha256.lower() == data["stock_dtbo_sha256"].lower(), (
+            f"DTBO SHA256 mismatch! Expected {data['stock_dtbo_sha256']}, got {sha256}"
+        )
+
+    # Check DTBO entry 0
+    dtbo_entry = extract_dtbo_entry(img_bytes, 0)
+    assert dtbo_entry is not None, "Failed to extract DTBO entry 0 from container"
+    entry0_sha = hashlib.sha256(dtbo_entry).hexdigest()
+    pipeline_dtbo = data.get("device_tree_pipeline", {}).get("dtbo", {})
+    if "entry0_sha256" in pipeline_dtbo:
+        expected_entry0_sha = pipeline_dtbo["entry0_sha256"]
+        assert entry0_sha.lower() == expected_entry0_sha.lower(), (
+            f"DTBO entry 0 SHA256 mismatch! Expected {expected_entry0_sha}, got {entry0_sha}"
+        )
+    print(f"      [   dtbo_entry0] Validated DTBO overlay entry 0 ({len(dtbo_entry):,} bytes, SHA256: {entry0_sha})")
+    print("    -> All DTBO binary assertions verified successfully.")
+
+def verify_vendor_boot_binary(data, vendor_boot_path):
+    print(f"\n[*] Auditing stock vendor_boot firmware binary: {vendor_boot_path}")
+    with open(vendor_boot_path, "rb") as f:
+        img_bytes = f.read()
+
+    sha256 = hashlib.sha256(img_bytes).hexdigest()
+    print(f"    Container size: {len(img_bytes):,} bytes")
+    print(f"    Container SHA256: {sha256}")
+    if "stock_vendor_boot_sha256" in data:
+        assert sha256.lower() == data["stock_vendor_boot_sha256"].lower(), (
+            f"vendor_boot SHA256 mismatch! Expected {data['stock_vendor_boot_sha256']}, got {sha256}"
+        )
+
+    # Extract base DTB and verify binary identity against stock_base_dtb_sha256
+    vb_dtb = extract_vendor_boot_dtb(img_bytes)
+    assert vb_dtb is not None, "Failed to extract base DTB from vendor_boot container"
+    vb_dtb_sha = hashlib.sha256(vb_dtb).hexdigest()
+    if "stock_base_dtb_sha256" in data:
+        assert vb_dtb_sha.lower() == data["stock_base_dtb_sha256"].lower(), (
+            f"vendor_boot base DTB mismatch! Expected {data['stock_base_dtb_sha256']}, got {vb_dtb_sha}"
+        )
+    print(f"      [   dtb_identity] Validated 100% binary identity with LK base DTB ({len(vb_dtb):,} bytes, SHA256: {vb_dtb_sha})")
+    print("    -> All vendor_boot binary assertions verified successfully.")
+
 def main():
     print("=" * 64)
     print(" Loki Stock Symbol & Architecture Consistency Verifier")
@@ -397,6 +462,8 @@ def main():
     target_fw = locate_firmware_image(sys.argv[1] if len(sys.argv) > 1 else None, REPO_ROOT)
     target_tee = locate_tee_image(None, REPO_ROOT)
     target_pl = locate_preloader_image(None, REPO_ROOT)
+    target_dtbo = locate_dtbo_image(None, REPO_ROOT)
+    target_vb = locate_vendor_boot_image(None, REPO_ROOT)
 
     for json_path in device_files:
         data = verify_device(json_path)
@@ -412,6 +479,12 @@ def main():
 
         if target_pl:
             verify_preloader_binary(data, target_pl)
+
+        if target_dtbo:
+            verify_dtbo_binary(data, target_dtbo)
+
+        if target_vb:
+            verify_vendor_boot_binary(data, target_vb)
 
     print("\n[+] ALL DEVICE CONSISTENCY & REVERSE-ENGINEERING CHECKS PASSED.")
 

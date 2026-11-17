@@ -9,6 +9,9 @@
   "stock_tee_a_sha256": "8aede55ca7fbcfcfbdae4fa2cb76435c2b04f7cbe55ec65dcbc08a8a658a54d6",
   "stock_tee_b_sha256": "0a961a9940f01090005bf5ce1cd33d58c835f8d0925ba28bd187b114c582db44",
   "stock_preloader_sha256": "f1cedb6912be99cbedc2fc49b0033e6067dda08fc836b2d3900e634e71b35d50",
+  "stock_vendor_boot_sha256": "b38b124f3b14fac4cb43960b7ae924f7dc4d767e23f7f7a4973b6619dd5ebc62",
+  "stock_dtbo_sha256": "52c4016d34db19a90a2afdb7bd37756230dfd810cd3b7fd7eabe99392ae6c1c3",
+  "stock_base_dtb_sha256": "2285a2859d1e3c8a375b752f687b16b4e494ae41d0211a507bb99d131524e363",
   "container_size": 4194304,
   "subpartitions": {
     "lk": {
@@ -957,6 +960,42 @@
       "fid64": "0xC2000517",
       "addr": "0x0000000048204308",
       "desc": "MediaTek SiP SMC handler for MTK_SIP_AUDIO_CONTROL"
+    }
+  },
+  "device_tree_pipeline": {
+    "base_dtb": {
+      "subpartition_name": "lk_main_dtb",
+      "lk_offset": "0x1DC220",
+      "size_bytes": 189175,
+      "sha256": "2285a2859d1e3c8a375b752f687b16b4e494ae41d0211a507bb99d131524e363",
+      "model": "MT6789",
+      "compatible": "mediatek,MT6789",
+      "vendor_boot_identical": true
+    },
+    "dtbo": {
+      "partition": "dtbo",
+      "total_size": 52653,
+      "entry_count": 1,
+      "entry0_size": 52589,
+      "entry0_sha256": "91d75534e73c219d1701c9a26805487bf0a79ca1ac0ba20015641eb131ca6fc7"
+    },
+    "overlay_stage": {
+      "loader_func": "platform_load_device_tree",
+      "post_overlay_size": 241764
+    },
+    "dynamic_mutations": {
+      "disp_lcm_fill_lcm_dts_phandle": "Injects LCM driver node and display properties",
+      "update_mmc_dts": "Disables mmc0 controller on UFS 2.2 hardware boots",
+      "set_fdt_avb_cmdline": "Appends Android Verified Boot 2.0 command line parameters",
+      "platform_fdt_set_chipid": "Injects SoC chip ID and hardware revision",
+      "platform_atag_devinfo_data": "Injects factory configuration and devinfo",
+      "mblock_fdt_reserved_append": "Appends all 31 mblock physical memory reservations under /reserved-memory"
+    },
+    "handoff": {
+      "fdt_load_addr": "0x47C80000",
+      "kernel_load_addr": "0x40000000",
+      "ramdisk_load_addr": "0x66F00000",
+      "final_fdt_size": 253152
     }
   }
 }
