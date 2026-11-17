@@ -269,5 +269,77 @@
     "VOL_DOWN": 1,
     "VOL_UP": 6,
     "POWER": 8
+  },
+  "zero_regions": {
+    "lk": {
+      "ZERO_REGION_1": {
+        "file_offset": "0x000338",
+        "file_offset_end": "0x001000",
+        "addr_start": "0xFFFF000050F00338",
+        "addr_end": "0xFFFF000050F01000",
+        "size_bytes": 3272,
+        "recommended_hook_addr": "0xFFFF000050F00340",
+        "permissions": "RX",
+        "desc": "Linker alignment padding before VBAR_EL1 vector table in .text segment"
+      },
+      "ZERO_REGION_2": {
+        "file_offset": "0x00187C",
+        "file_offset_end": "0x002400",
+        "addr_start": "0xFFFF000050F0187C",
+        "addr_end": "0xFFFF000050F02400",
+        "size_bytes": 2948,
+        "permissions": "RX",
+        "desc": "Linker alignment padding after VBAR_EL1 vector table in .text segment"
+      },
+      "ZERO_REGION_3": {
+        "file_offset": "0x0741E9",
+        "file_offset_end": "0x075000",
+        "addr_start": "0xFFFF000050F741E9",
+        "addr_end": "0xFFFF000050F75000",
+        "size_bytes": 3607,
+        "permissions": "RX",
+        "desc": "Linker alignment padding at end of .text segment"
+      }
+    }
+  },
+  "unallocated_flash": {
+    "container_size_bytes": 4194304,
+    "used_bytes": 2143142,
+    "offset_start": "0x20B3A6",
+    "offset_end": "0x400000",
+    "free_space_bytes": 2051162,
+    "free_space_mib": 1.956,
+    "desc": "Trailing unallocated flash partition space in lk.img filled with pure 0x00 bytes; ideal for large standalone payloads"
+  },
+  "hooks": {
+    "HOOK_APP_FASTBOOT": {
+      "type": "pointer_patch",
+      "target": "0xFFFF000050F99A80",
+      "stock_entry": "0xFFFF000050F05724",
+      "desc": "Fastboot app descriptor entry routine pointer"
+    },
+    "HOOK_APP_MTBOOT": {
+      "type": "pointer_patch",
+      "target": "0xFFFF000050F99AA8",
+      "stock_entry": "0xFFFF000050F0BEF0",
+      "desc": "Android boot (mt_boot) app descriptor entry routine pointer"
+    },
+    "HOOK_TARGET_INIT_CALL": {
+      "type": "bl_opcode_patch",
+      "target": "0xFFFF000050F04A2C",
+      "stock_target": "0xFFFF000050F46378",
+      "desc": "Call site to target_init() inside bootstrap2(); screen and PMIC are active"
+    },
+    "HOOK_KERNEL_DECOMP_CALL": {
+      "type": "bl_opcode_patch",
+      "target": "0xFFFF000050F0BD58",
+      "stock_target": "0xFFFF000050F0A994",
+      "desc": "Call site to kernel_decompress() inside mt_boot() before Linux execution"
+    },
+    "HOOK_BL2_EXT_SPSR": {
+      "type": "code_hook",
+      "target": "0xFFFF000062F04FBC",
+      "desc": "Secure EL3 SPSR drop routine in bl2_ext before ATF BL31 handoff"
+    }
   }
 }

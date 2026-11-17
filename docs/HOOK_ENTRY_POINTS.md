@@ -1,132 +1,161 @@
-# Safe Hook Entry Points & Execution Proof Methodology
+# Comprehensive Catalog of Safe Hook Entry Points & Zero-Region Placement
 
 **Target:** MediaTek MT6789 (Helio G99 / MT8781) | ADVAN X1 Firmware Baseline v5  
-**Context:** Non-Secure EL1 (Little Kernel) and Secure EL3 (BL2_EXT)
-
-This document maps all verified, safe execution hook sites in the MediaTek stock bootchain and describes how to prove execution reachability via **onscreen visual markers**, **`expdb` forensic registers**, or **serial log output** without breaking the stock bootflow.
+**Scope:** Complete lifecycle of Little Kernel (LK / BL33) and Bootloader Extension (BL2_EXT / EL3)
 
 ---
 
-## 1. Summary of Safe Hook Sites
+## 1. Zero-Filled Code Regions in Little Kernel (`.text`)
 
-| Site ID | Subpartition | Location / Mechanism | Phase / Pre-conditions | Primary Proof Channel | Impact on Stock Boot |
+Instead of reusing dead or unreferenced driver code, Little Kernel contains large **linker-inserted alignment padding regions filled with pure `0x00` bytes**. Because these regions reside directly inside the `.text` executable segment, they are mapped **Read + Execute (RX)** by default under stock LK page tables.
+
+| Region ID | File Offset in `00_lk.bin` | Virtual Address Range | Size (Bytes) | Origin / Cause | Executable (RX) |
 |---|---|---|---|---|---|
-| **HOOK_APP_FASTBOOT** | `lk` | `0xFFFF000050F99A80` (Descriptor pointer) | Entered on Fastboot triggers (VolUp menu / reboot bootloader) | Onscreen / `expdb` | Zero (chains to stock entry) |
-| **HOOK_APP_MTBOOT** | `lk` | `0xFFFF000050F99A98` (Descriptor pointer) | Entered on every normal/recovery boot | Onscreen / `expdb` / UART | Zero (chains to stock entry) |
-| **HOOK_TARGET_INIT** | `lk` | `0xFFFF000050F04A2C` (`bl` call site) | Inside `bootstrap2()` after display & PMIC are online | Onscreen / `expdb` | Zero (`target_init` is a stub) |
-| **HOOK_KERNEL_DECOMP**| `lk` | `0xFFFF000050F0BD58` (`bl` call site) | Inside `mt_boot()` before kernel LZ4 decompression | `expdb` / memory marker | Zero (calls decompressor) |
-| **HOOK_BL2_EXT_SPSR** | `bl2_ext` | `0xFFFF000062F04FBC` (EL3 routine) | Early Secure EL3 before ATF BL31 / LK | `expdb` / SRAM marker | Zero (proceeds to ATF) |
+| **ZERO_REGION_1** | `0x000338` .. `0x001000` | `0xFFFF000050F00338` .. `0xFFFF000050F01000` | **3,272 B** (`0xCC8`) | Alignment padding before `VBAR_EL1` vector table | **YES (RX)** |
+| **ZERO_REGION_2** | `0x00187C` .. `0x002400` | `0xFFFF000050F0187C` .. `0xFFFF000050F02400` | **2,948 B** (`0xB84`) | Alignment padding after `VBAR_EL1` vector table | **YES (RX)** |
+| **ZERO_REGION_3** | `0x0741E9` .. `0x075000` | `0xFFFF000050F741E9` .. `0xFFFF000050F75000` | **3,607 B** (`0xE17`) | Alignment padding at end of `.text` segment | **YES (RX)** |
+
+> **Recommended Safe Placement:** `0xFFFF000050F00340` (inside **ZERO_REGION_1**).  
+> It has 3,264 bytes of contiguous zeros, zero collisions with code/data, and is within direct 26-bit branch range (`+/- 128 MB`) from anywhere in the kernel.
 
 ---
 
-## 2. Detailed Breakdown of Each Hook Site
+## 2. Complete Catalog of Safe Hook Sites Across the Bootchain
 
-### Hook Site 1: Fastboot App Descriptor Pointer (`HOOK_APP_FASTBOOT`)
-* **Address in Memory:** `0xFFFF000050F99A80`
-* **File Offset in `00_lk.bin`:** `0x099A80`
-* **Mechanism:** Data Pointer Patch. `0x50F99A70` holds the static `struct app_descriptor` for `"fastboot"`:
-  ```text
-  0x50F99A70: name_ptr  = 0xFFFF000050F76748 ("fastboot")
-  0x50F99A78: init_ptr  = 0x0000000000000000
-  0x50F99A80: entry_ptr = 0xFFFF000050F05724 (ADDR_LK_APP_FASTBOOT_STOCK_ENTRY)
-  ```
-* **Why it's safe:**
-  - **Zero code modification in `.text`:** Modifies only an 8-byte pointer in the application table.
-  - The CPU is in Non-Secure EL1 with MMU and D-Cache enabled.
-  - The display, USB MTU3 controller, and watchdog are already fully initialized.
-* **Pass-Through Continuation:**
-  - At the end of your hook, branch directly to `0xFFFF000050F05724`. Stock USB fastboot continues normally.
+A hook is classified as **safe** if:
+1. It executes in a well-defined hardware state with MMU active.
+2. It has a clean pass-through return path that does not disrupt normal bootflow.
+3. It does not corrupt register state (`x19-x30`, `sp` preserved).
 
----
+### Phase 1: Early Kernel Initialization (`kmain` Sequence)
 
-### Hook Site 2: Android Boot App Descriptor Pointer (`HOOK_APP_MTBOOT`)
-* **Address in Memory:** `0xFFFF000050F99AA8`
-* **File Offset in `00_lk.bin`:** `0x099AA8`
-* **Mechanism:** Data Pointer Patch. `0x50F99A90` holds the static `struct app_descriptor` for `"mt_boot"`:
-  ```text
-  0x50F99A90: name_ptr  = 0xFFFF000050F78C33 ("mt_boot")
-  0x50F99A98: init_ptr  = 0xFFFF000050F0C768
-  0x50F99AA0: entry_ptr = 0xFFFF000050F0C87C
-  ```
-* **Why it's safe:**
-  - Triggers on **every boot** (Normal Android boot, Recovery boot, KPOC charger mode).
-  - Modifies only the application entry pointer.
-* **Pass-Through Continuation:**
-  - Branch to stock `0xFFFF000050F0C87C`. Android boots completely unimpeded.
+#### 1. Universal Milestone Logger Entry (`HOOK_MILESTONE_ENTRY`)
+* **Address:** `0xFFFF000050F047A4` (Offset: `0x0047A4`)
+* **Mechanism:** Function replacement / wrapper.
+* **Context:** Called at every single LK initialization step (`0x50F0490C`, `0x50F04920`, `0x50F04934`, `0x50F04948`, `0x50F049FC`, `0x50F04A14`, `0x50F04A28`, `0x50F04A3C`, `0x50F04A50`) with `w1 = phase_id`.
+* **Milestone IDs:**
+  * `w1 = 0x20000`: After `thread_init_early`
+  * `w1 = 0x30000`: After `arch_early_init` (Generic Timer online)
+  * `w1 = 0x40000`: After `platform_early_init` (UART0 online)
+  * `w1 = 0x50000`: After `target_early_init`
+  * `w1 = 0x60000`: After `heap_init` (DRAM heap online)
+  * `w1 = 0x80000`: After `arch_init`
+  * `w1 = 0x90000`: After `platform_init` (MIPI DSI Display & PMIC online)
+  * `w1 = 0xA0000`: After `target_init` (UFS Storage online)
+  * `w1 = 0xB0000`: After `apps_init`
+* **Why it's safe:** Universal lifecycle observer; hook receives phase IDs and calls original `0x50F047A4`.
+
+#### 2. `target_early_init` Call Site (`HOOK_TARGET_EARLY_INIT`)
+* **Address:** `0xFFFF000050F04938` (Offset: `0x004938`)
+* **Original Opcode:** `bl #0xffff000050f46374` (target function is a `ret` stub).
+* **Context:** Called in early `kmain()` before heap initialization.
 
 ---
 
-### Hook Site 3: `target_init()` Call Site in `bootstrap2()` (`HOOK_TARGET_INIT`)
-* **Address in Memory:** `0xFFFF000050F04A2C`
-* **File Offset in `00_lk.bin`:** `0x004A2C`
-* **Original Opcode:** `bl #0xffff000050f46378`
-* **Context:**
-  ```arm64
-  0xFFFF000050F04A18: bl platform_init       ; Display & PMIC online!
-  0xFFFF000050F04A28: bl milestone_logger
-  0xFFFF000050F04A2C: bl target_init         ; <-- HOOK SITE
-  0xFFFF000050F04A40: bl apps_init           ; Launches fastboot & mt_boot
-  ```
-* **Why it's safe:**
-  - On the ADVAN X1 retail baseline, `target_init` at `0xFFFF000050F46378` is literally just an empty stub containing a single `ret` instruction!
-  - Diverting this `bl` to custom proof code executes immediately after the screen is initialized and before any boot decisions are made.
-* **Pass-Through Continuation:**
-  - Return via `ret` (or branch to `0xFFFF000050F46378`). `bootstrap2()` proceeds directly into `apps_init()`.
+### Phase 2: Secondary System Initialization (`bootstrap2` Sequence)
+
+#### 3. `target_init` Call Site (`HOOK_TARGET_INIT`)
+* **Address:** `0xFFFF000050F04A2C` (Offset: `0x004A2C`)
+* **Original Opcode:** `bl #0xffff000050f46378` (`0x94010653`)
+* **Replacement Opcode for ZERO_REGION_1:** `bl #0xffff000050f00340` (`0x97FFE445`)
+* **Context:** Called in `bootstrap2()` right after `platform_init()` (display, backlight, and PMIC are up) and right before `apps_init()`.
+* **Why it's safe:** `target_init` on retail MT6789 is an empty `ret` stub. Replacing this branch executes your hook with full display and storage online, then returns cleanly.
 
 ---
 
-## 3. How to Prove Execution Reachability
+### Phase 3: Application Descriptors (`apps_init` Sequence)
 
-There are three independent channels to prove that a hook executed successfully:
+#### 4. Fastboot Application Entry Pointer (`HOOK_APP_FASTBOOT`)
+* **Address:** `0xFFFF000050F99A80` (Offset: `0x099A80`)
+* **Original Pointer:** `0xFFFF000050F05724` (`ADDR_LK_APP_FASTBOOT_STOCK_ENTRY`)
+* **Mechanism:** 64-bit data pointer in `struct app_descriptor` table.
+* **Context:** Triggers only when Fastboot mode is selected.
+* **Why it's safe:** Pure data modification; zero `.text` modification. Chains to `0x50F05724`.
 
-### Channel A: Onscreen Text Marker (Visual Proof)
-Because the video console is initialized during `platform_init()`, your hook can render text directly to the active screen:
+#### 5. Android Boot (`mt_boot`) Init Pointer (`HOOK_APP_MTBOOT_INIT`)
+* **Address:** `0xFFFF000050F99AA0` (Offset: `0x099AA0`)
+* **Original Pointer:** `0xFFFF000050F0C768`
+* **Context:** Application initialization callback executed during `apps_init()`.
 
-```arm64
-// 1. Position cursor at row 5, col 2
-mov  w0, #5
-mov  w1, #2
-ldr  x8, =ADDR_LK_VIDEO_SET_CURSOR   // 0xFFFF000050F33B9C
-blr  x8
+#### 6. Android Boot (`mt_boot`) Entry Pointer (`HOOK_APP_MTBOOT_ENTRY`)
+* **Address:** `0xFFFF000050F99AA8` (Offset: `0x099AA8`)
+* **Original Pointer:** `0xFFFF000050F0C87C`
+* **Context:** Main boot thread entry point. Triggers on **every boot** (Normal, Recovery, KPOC).
+* **Why it's safe:** Data pointer patch; chains to `0x50F0C87C` for uninterrupted Android boot.
 
-// 2. Print confirmation banner
-adr  x0, msg_hook_ok
-ldr  x8, =ADDR_LK_VIDEO_PRINTF       // 0xFFFF000050F33AD8
-blr  x8
+#### 7. Application Thread Dispatcher Trampoline (`HOOK_APP_THREAD_DISPATCH`)
+* **Address:** `0xFFFF000050F04B68` (Offset: `0x004B68`)
+* **Original Opcode:** `blr x8` inside `app_thread_entry`
+* **Context:** Universal interceptor for every spawned application thread.
 
-// 3. Flush dirty rectangle to panel
-mov  w0, wzr                         // left = 0
-mov  w1, wzr                         // top = 0
-mov  w2, #1080                       // right = 1080
-mov  w3, #300                        // bottom = 300
-ldr  x8, =ADDR_LK_MT_DISP_UPDATE     // 0xFFFF000050F40B88
-blr  x8
+---
 
-msg_hook_ok:
-    .asciz "[LOKI] HOOK EXECUTION VERIFIED: 0xCAFEB007\n"
-```
+### Phase 4: Boot Mode & Decision Engine (`mt_boot` Pipeline)
 
-### Channel B: Hardware Forensic Register (`expdb` Proof)
-The MediaTek MT6789 RGU / Watchdog controller contains non-reset registers that are **preserved across warm reboots** and dumped automatically into the `expdb` flash partition:
+#### 8. Preloader Reboot Reason Evaluation (`HOOK_REBOOT_REASON`)
+* **Address:** `0xFFFF000050F09D14` (Offset: `0x009D14`)
+* **Context:** Where LK reads reboot reason registers (Mode 2 = Recovery, Mode 99 = Fastboot).
 
-* Register: `MT6789_WDT_NONRST_REG` (`0x10007020`)
-* Virtual Address in LK: `0xFFFF000010007020`
+#### 9. Hardware Key Menu Call Site (`HOOK_ACTIVATE_MENU`)
+* **Address:** `0xFFFF000050F0A1B8` (Offset: `0x00A1B8`)
+* **Original Target:** `activate_menu()` (Stock MediaTek VolUp selection menu).
+* **Context:** Triggers when Volume Up is held at boot.
 
-```arm64
-// Write milestone marker 0xCAFEB007 to NONRST register
-mov  x8, #0x7020
-movk x8, #0x1000, lsl #16
-movk x8, #0xffff, lsl #48            // x8 = 0xFFFF000010007020
-mov  w9, #0xB007
-movk w9, #0xCAFE, lsl #16            // w9 = 0xCAFEB007
-str  w9, [x8]
-```
+#### 10. Kernel Power-Off Charging Gate (`HOOK_KPOC_CHECK`)
+* **Address:** `0xFFFF000050F09D6C` (Offset: `0x009D6C`)
+* **Context:** Evaluates whether USB charger is plugged in without power key pressed.
 
-**Verification from Android:**
-After booting into Android, verify the marker via:
-```bash
-adb shell su -c 'strings /dev/block/by-name/expdb | grep CAFEB007'
-```
+---
 
-### Channel C: UART Serial Console
-If UART0 (`0x11002000`) is connected at 921600 baud, `video_printf` and LK print routines output directly to the serial console line.
+### Phase 5: Kernel Staging & Linux Handoff
+
+#### 11. Kernel Decompress Call Site (`HOOK_KERNEL_DECOMPRESS`)
+* **Address:** `0xFFFF000050F0BD58` (Offset: `0x00BD58`)
+* **Original Opcode:** `bl #0xffff000050f0a994`
+* **Context:** Executes right after `boot.img` is loaded from UFS into DRAM, immediately before decompressing into `0x40000000`.
+
+#### 12. Linux Command Line Append Call Site (`HOOK_CMDLINE_APPEND`)
+* **Address:** `0xFFFF000050F0BF6C` (Offset: `0x00BF6C`)
+* **Original Opcode:** `bl #0xffff000050f0f800`
+* **Context:** Called during boot argument generation; allows parameter inspection or modification.
+
+#### 13. DTB `/chosen` Property Setter Call Site (`HOOK_FDT_SETPROP`)
+* **Address:** `0xFFFF000050F0C08C` (Offset: `0x00C08C`)
+* **Original Opcode:** `bl #0xffff000050f498e8`
+* **Context:** Stages DTB node properties in DRAM before kernel handover.
+
+#### 14. `boot_linux` Entry (`HOOK_BOOT_LINUX`)
+* **Address:** `0xFFFF000050F14330` (Offset: `0x014330`)
+* **Context:** Final LK function; masks `DAIF`, flushes caches, turns off MMU.
+
+#### 15. Pre-SMC Physical Trampoline (`HOOK_SMC_TRAMPOLINE`)
+* **Address:** `0xFFFF000050F0C3CC` (Offset: `0x00C3CC`)
+* **Original Opcodes:** `mov x4, #1; smc #0` (FID `0xC2000115`)
+* **Context:** Final physical code executed in LK before ATF BL31 jumps to kernel `stext`.
+
+---
+
+### Phase 6: Secure EL3 (`bl2_ext`) Hook Sites
+
+#### 16. `bl2_ext` Memory Staging Call Site (`HOOK_BL2_EXT_STAGING`)
+* **Address:** `0xFFFF000062F04EE8` (Offset: `0x004EE8`)
+* **Context:** Prepares `"vm-BL33-reserved"` and `"vm-BL31-reserved"` DRAM pools.
+
+#### 17. SPSR Privilege Configuration Routine (`HOOK_BL2_EXT_SPSR`)
+* **Address:** `0xFFFF000062F04FBC` (Offset: `0x004FBC`)
+* **Context:** Checks `CurrentEL` and writes `0x3c5` to `spsr_el3` (`0x4FE8`) and `spsr_el2` (`0x4FFC`).
+
+---
+
+## 3. The 3 Verification Proof Channels
+
+Each safe hook can prove its execution using three non-disruptive channels:
+
+1. **Onscreen Visual Text Marker:**
+   * Uses `video_set_cursor` (`0x50F33B9C`), `video_printf` (`0x50F33AD8`), and `mt_disp_update` (`0x50F40B88`).
+   * Renders confirmation text directly to the panel.
+2. **Forensic Hardware Register (`expdb` / NONRST):**
+   * Writes milestone marker `0xCAFEB007` to `MT6789_WDT_NONRST_REG` (`0xFFFF000010007020`).
+   * Survives warm reboots and is verified via `adb shell su -c 'strings /dev/block/by-name/expdb | grep CAFEB007'`.
+3. **Serial Console Log Output:**
+   * Outputs directly over UART0 (`0x11002000 @ 921600 baud`).

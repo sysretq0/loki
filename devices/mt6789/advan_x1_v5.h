@@ -118,4 +118,34 @@
 #define FB_WIDTH                     1080
 #define FB_HEIGHT                    2400
 
+/* --- Zero-Filled (.text) Executable Padding Regions (No Dead Code Reuse) --- */
+/* Region 1: Linker alignment before VBAR_EL1 vector table (3,272 bytes pure 0x00) */
+#define ZERO_REGION_1_OFFSET         0x000338ULL
+#define ZERO_REGION_1_VIRT           0xFFFF000050F00338ULL
+#define ZERO_REGION_1_SIZE           3272ULL
+#define PROOF_HOOK_TARGET_VIRT       0xFFFF000050F00340ULL  /* Recommended 16-byte aligned hook entry */
+
+/* Region 2: Linker alignment after VBAR_EL1 vector table (2,948 bytes pure 0x00) */
+#define ZERO_REGION_2_OFFSET         0x00187CULL
+#define ZERO_REGION_2_VIRT           0xFFFF000050F0187CULL
+#define ZERO_REGION_2_SIZE           2948ULL
+
+/* Region 3: Linker alignment at end of .text segment (3,607 bytes pure 0x00) */
+#define ZERO_REGION_3_OFFSET         0x0741E9ULL
+#define ZERO_REGION_3_VIRT           0xFFFF000050F741E9ULL
+#define ZERO_REGION_3_SIZE           3607ULL
+
+/* --- Container Flash Partition Free Space (lk.img) --- */
+/* Trailing unallocated partition space (1.956 MiB pure 0x00 flash space) */
+#define UNALLOCATED_FLASH_OFFSET     0x20B3A6ULL
+#define UNALLOCATED_FLASH_SIZE       0x1F4C5AULL  /* 2,051,162 bytes */
+#define CONTAINER_TOTAL_SIZE         0x400000ULL  /* 4,194,304 bytes (4 MiB) */
+
+/* --- Primary Safe Hook Sites --- */
+#define HOOK_SITE_TARGET_INIT_CALL   0xFFFF000050F04A2CULL  /* bl call site in bootstrap2 */
+#define HOOK_SITE_FASTBOOT_ENTRY_PTR 0xFFFF000050F99A80ULL  /* Fastboot app descriptor entry ptr */
+#define HOOK_SITE_MTBOOT_ENTRY_PTR   0xFFFF000050F99AA8ULL  /* mt_boot app descriptor entry ptr */
+#define HOOK_SITE_KERNEL_DECOMP_CALL 0xFFFF000050F0BD58ULL  /* bl call site in mt_boot */
+#define HOOK_SITE_BL2_EXT_SPSR       0xFFFF000062F04FBCULL  /* EL3 SPSR drop routine in bl2_ext */
+
 #endif /* ADVAN_X1_V5_H */

@@ -89,6 +89,18 @@
     "keycodes": {
       "type": "object",
       "description": "Hardware keycode IDs detected by detect_key"
+    },
+    "zero_regions": {
+      "type": "object",
+      "description": "Zero-filled alignment padding regions in executable segments for clean code placement"
+    },
+    "unallocated_flash": {
+      "type": "object",
+      "description": "Unallocated pure 0x00 flash space in container partition"
+    },
+    "hooks": {
+      "type": "object",
+      "description": "Catalog of safe hook sites across bootchain lifecycle"
     }
   }
 }

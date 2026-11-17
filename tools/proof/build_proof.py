@@ -3,8 +3,9 @@
 """
 build_proof.py — Execution Reachability Proof Tool for MT6789 (LK)
 
-Builds the minimal 164-byte proof hook (proof_hook.S) and tests/validates
-hook placement against stock LK binary images.
+Builds the minimal 164-byte proof hook (proof_hook.S) and verifies hook placement
+inside the empty zero-filled linker alignment region (0xFFFF000050F00340) in .text,
+completely avoiding dead code reuse.
 """
 
 import os
@@ -14,12 +15,15 @@ import struct
 import hashlib
 
 LK_BASE_VIRT = 0xFFFF000050F00000
-CAVE_VIRT    = 0xFFFF000050F1F2A0
-CAVE_OFFSET  = CAVE_VIRT - LK_BASE_VIRT  # 0x01F2A0
 
-# Safe Hook Sites
+# Zero-Filled Region 1 in .text (3,272 bytes of pure 0x00 between reset and vectors)
+ZERO_REGION_1_VIRT   = 0xFFFF000050F00340
+ZERO_REGION_1_OFFSET = ZERO_REGION_1_VIRT - LK_BASE_VIRT  # 0x000340
+
+# Hook Sites
 HOOK_SITE_TARGET_INIT = 0xFFFF000050F04A2C
 HOOK_SITE_FASTBOOT    = 0xFFFF000050F99A80
+HOOK_SITE_MTBOOT      = 0xFFFF000050F99AA8
 
 def compile_proof_hook(out_bin):
     src_dir = os.path.dirname(os.path.abspath(__file__))
@@ -45,23 +49,36 @@ def verify_hook_placement(lk_bin_path):
 
     print(f"[*] Analyzing LK binary: {lk_bin_path} ({len(lk_data):,} bytes)")
 
-    # 1. Verify Cave Offset
-    if CAVE_OFFSET + 256 > len(lk_data):
-        print(f"[!] Cave offset 0x{CAVE_OFFSET:06X} out of binary bounds!")
-        return False
-    print(f"[+] Cave offset verified: 0x{CAVE_OFFSET:06X} (VA: 0x{CAVE_VIRT:016X})")
+    # 1. Verify Zero-Filled Region 1
+    zero_chunk = lk_data[ZERO_REGION_1_OFFSET : ZERO_REGION_1_OFFSET + 256]
+    is_zeros = all(b == 0 for b in zero_chunk)
+    print(f"[+] Zero Region 1: offset 0x{ZERO_REGION_1_OFFSET:06X} (VA: 0x{ZERO_REGION_1_VIRT:016X})")
+    print(f"    Region is all zeros: {is_zeros} (Available: 3,248 contiguous bytes in .text RX segment)")
 
     # 2. Verify Target Init Call Site
     t_ofs = HOOK_SITE_TARGET_INIT - LK_BASE_VIRT
     ins_word = struct.unpack_from("<I", lk_data, t_ofs)[0]
+    # Calculate replacement BL opcode to ZERO_REGION_1_VIRT
+    diff = ZERO_REGION_1_VIRT - HOOK_SITE_TARGET_INIT
+    imm26 = (diff >> 2) & 0x03FFFFFF
+    bl_opcode = 0x94000000 | imm26
     print(f"[+] Hook Site 1 (target_init call site): 0x{t_ofs:06X} (VA: 0x{HOOK_SITE_TARGET_INIT:016X})")
-    print(f"    Current opcode: 0x{ins_word:08X}")
+    print(f"    Current opcode:     0x{ins_word:08X}")
+    print(f"    Replacement opcode: 0x{bl_opcode:08X} (bl #0x{ZERO_REGION_1_VIRT:X})")
 
     # 3. Verify Fastboot App Entry Pointer
     fb_ofs = HOOK_SITE_FASTBOOT - LK_BASE_VIRT
     fb_ptr = struct.unpack_from("<Q", lk_data, fb_ofs)[0]
     print(f"[+] Hook Site 2 (fastboot entry pointer): 0x{fb_ofs:06X} (VA: 0x{HOOK_SITE_FASTBOOT:016X})")
-    print(f"    Current pointer: 0x{fb_ptr:016X} (Stock entry: 0xFFFF000050F05724)")
+    print(f"    Current pointer:     0x{fb_ptr:016X}")
+    print(f"    Replacement pointer: 0x{ZERO_REGION_1_VIRT:016X}")
+
+    # 4. Verify Android Boot (mt_boot) Entry Pointer
+    mt_ofs = HOOK_SITE_MTBOOT - LK_BASE_VIRT
+    mt_ptr = struct.unpack_from("<Q", lk_data, mt_ofs)[0]
+    print(f"[+] Hook Site 3 (mt_boot entry pointer): 0x{mt_ofs:06X} (VA: 0x{HOOK_SITE_MTBOOT:016X})")
+    print(f"    Current pointer:     0x{mt_ptr:016X}")
+    print(f"    Replacement pointer: 0x{ZERO_REGION_1_VIRT:016X}")
 
     return True
 

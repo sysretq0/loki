@@ -75,6 +75,8 @@ The MediaTek `lk` partition (4 MiB) is a multi-image container containing discre
 
 ## 4. Discovery Tooling Suite
 
+* **`make verify` / `tools/verify.py`**: Automated schema, C header, and binary assertion suite.
+* **`make proof` / `tools/proof/build_proof.py`**: Compiles freestanding ARM64 proof hook and tests zero-region placement.
 * **`tools/unpack.py`**: Extracts all discrete sub-images and signatures from `lk.img`.
 * **`tools/capstone/scan_lk.py`**: Scans raw LK ARM64 binaries for MMU disable jumps, SMC boot trampolines, WDT keys, and string anchors.
 * **`tools/capstone/scan_bl2_ext.py`**: Scans raw BL2_EXT binaries for SPSR privilege drop sites and memory reservation pools.
@@ -84,8 +86,20 @@ The MediaTek `lk` partition (4 MiB) is a multi-image container containing discre
 
 ---
 
-## 5. Documentation
+## 5. Zero-Region Code Placement & Safe Hooking
 
+Rather than reusing dead driver code, `loki` documents clean, unallocated zero regions:
+* **In-Memory `.text` Alignment Padding:** `ZERO_REGION_1` (`0xFFFF000050F00338`..`0xFFFF000050F01000`, 3,272 contiguous pure `0x00` bytes) mapped Read+Execute (RX) under stock page tables. Ideal for small trampoline hooks.
+* **Partition Flash Free Space:** Trailing space from `0x20B3A6` to `0x400000` (2,051,162 bytes / 1.956 MiB pure `0x00`) available for standalone payloads.
+* **Safe Hook Catalog:** 17 safe execution sites mapped with non-disruptive proof channels (onscreen visual marker, `expdb` / `NONRST` register, UART log).
+
+See [Safe Hook Entry Points & Zero-Region Catalog](docs/HOOK_ENTRY_POINTS.md) for complete details.
+
+---
+
+## 6. Documentation
+
+* [Safe Hook Entry Points & Zero-Region Catalog](docs/HOOK_ENTRY_POINTS.md): Comprehensive catalog of 17 safe hook sites and zero-padding placement.
 * [Bootchain Lifecycle Deep-Dive](docs/BOOTCHAIN_LIFECYCLE.md): Full analysis of BROM, Preloader, BL2_EXT, ATF, LK, and Linux Kernel handoff.
 * [Little Kernel (LK) Function Map](docs/LK_FUNCTION_MAP.md): Detailed function reference for the ADVAN X1 v5 baseline.
 * [BL2_EXT & AEE Map](docs/BL2_EXT_AND_AEE_MAP.md): Comprehensive map of the EL3 bootloader extension and exception engine.
