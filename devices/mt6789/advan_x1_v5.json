@@ -5,6 +5,10 @@
   "arch": "aarch64",
   "firmware_version": "v5",
   "stock_lk_sha256": "a11516b640cfdadfc616dcca9db0160ad72dd473a035830b08ed5802883ae834",
+  "stock_tee_sha256": "0a961a9940f01090005bf5ce1cd33d58c835f8d0925ba28bd187b114c582db44",
+  "stock_tee_a_sha256": "8aede55ca7fbcfcfbdae4fa2cb76435c2b04f7cbe55ec65dcbc08a8a658a54d6",
+  "stock_tee_b_sha256": "0a961a9940f01090005bf5ce1cd33d58c835f8d0925ba28bd187b114c582db44",
+  "stock_preloader_sha256": "f1cedb6912be99cbedc2fc49b0033e6067dda08fc836b2d3900e634e71b35d50",
   "container_size": 4194304,
   "subpartitions": {
     "lk": {
@@ -54,6 +58,45 @@
       "container_span": "0x02F386",
       "load_addr": "DRAM staging",
       "el": null
+    },
+    "atf": {
+      "name": "ARM Trusted Firmware (TF-A v2.4 BL31)",
+      "offset": "0x000000",
+      "size": "0x030558",
+      "size_bytes": 197976,
+      "header_offset": "0x000000",
+      "payload_offset": "0x000200",
+      "payload_size": "0x030558",
+      "container_span": "0x0315F0",
+      "load_addr": "0x0000000048200000",
+      "el": 3
+    },
+    "tee": {
+      "name": "Trustonic Kinibi TEE-OS (BL32)",
+      "offset": "0x0315F0",
+      "size": "0x089400",
+      "size_bytes": 562176,
+      "header_offset": "0x0315F0",
+      "payload_offset": "0x0317F0",
+      "payload_size": "0x089400",
+      "container_span": "0x08A288",
+      "load_addr": "0x0000000070000000",
+      "el": 1
+    },
+    "preloader": {
+      "name": "MediaTek Preloader (BL2)",
+      "offset": "0x000000",
+      "size": "0x058F6C",
+      "size_bytes": 364396,
+      "header_offset": "0x001000",
+      "payload_offset": "0x0010F0",
+      "payload_size": "0x058810",
+      "sig_offset": "0x059900",
+      "sig_size": "0x00066C",
+      "container_span": "0x059F6C",
+      "load_addr": "0x00201000",
+      "arch": "arm",
+      "el": 3
     }
   },
   "symbols": {
@@ -274,6 +317,94 @@
         "addr": "0xFFFF000063F01000",
         "desc": "Initializes Exception Engine memory buffers and expdb persistence metadata"
       }
+    },
+    "atf": {
+      "_start": {
+        "addr": "0x0000000048200000",
+        "desc": "Stock ATF BL31 entry point in Secure EL3; sets VBAR_EL3, SCTLR_EL3, SCR_EL3"
+      },
+      "vbar_el3": {
+        "addr": "0x000000004821F800",
+        "desc": "ARMv8 Secure Exception Level 3 (EL3) Vector Base Address Register table"
+      },
+      "rt_svc_mtk_smc": {
+        "addr": "0x000000004820F880",
+        "desc": "Primary MediaTek SiP SMC dispatcher (OEN 2)"
+      },
+      "rt_svc_arm_arch": {
+        "addr": "0x0000000048202834",
+        "desc": "ARM Architecture service dispatcher (OEN 0)"
+      },
+      "rt_svc_std": {
+        "addr": "0x000000004821BFEC",
+        "desc": "Standard Runtime Service / PSCI 1.0 SMC dispatcher (OEN 4)"
+      },
+      "rt_svc_tbase_fastcall": {
+        "addr": "0x000000004821C3EC",
+        "desc": "Trustonic Kinibi TEE Fastcall dispatcher (OEN 0x32..0x3F)"
+      },
+      "rt_svc_tbase_smc": {
+        "addr": "0x000000004821CBC4",
+        "desc": "Trustonic Kinibi TEE Standard SMC dispatcher (OEN 0..2)"
+      },
+      "sip_kernel_boot": {
+        "addr": "0x0000000048204DD0",
+        "desc": "MTK_SIP_KERNEL_BOOT handler: transitions execution from Little Kernel to Linux kernel"
+      },
+      "sip_lk_dapc_init": {
+        "addr": "0x00000000482071F0",
+        "desc": "MTK_SIP_LK_DAPC_INIT handler: Device APC firewall initialization called from LK"
+      },
+      "sip_lk_root_of_trust": {
+        "addr": "0x00000000482188E4",
+        "desc": "MTK_SIP_LK_ROOT_OF_TRUST handler: validates cryptographic root of trust for AVB verification"
+      },
+      "sip_bl33_mpu_perm_set": {
+        "addr": "0x000000004821711C",
+        "desc": "MTK_SIP_BL33_MPU_PERM_SET handler: configures EMI MPU permissions for Little Kernel"
+      },
+      "sip_hyp_devapc_ctrl": {
+        "addr": "0x0000000048217B00",
+        "desc": "MTK_SIP_HYP_DEVAPC_CTRL handler: hypervisor DevAPC domain protection"
+      },
+      "sip_hyp_static_secmem_get": {
+        "addr": "0x0000000048218410",
+        "desc": "MTK_SIP_HYP_STATIC_SECMEM_GET handler: queries static secure memory carved out for EL3/TEE"
+      },
+      "sip_hyp_el3_eret_done": {
+        "addr": "0x0000000048217BA0",
+        "desc": "MTK_SIP_HYP_EL3_ERET_DONE handler: completes EL3 exception return to EL2 hypervisor"
+      },
+      "sip_hyp_smc_to_el2_ret": {
+        "addr": "0x0000000048217C20",
+        "desc": "MTK_SIP_HYP_SMC_TO_EL2_RET handler: returns SMC status code to EL2 execution context"
+      }
+    },
+    "preloader": {
+      "_start": {
+        "addr": "0x00201000",
+        "desc": "Stock Preloader entry point in AArch32 Secure EL3; zeroes r0-lr, checks MIDR for Cortex-A55, sets SVC mode"
+      },
+      "main": {
+        "addr": "0x00201634",
+        "desc": "Preloader main C initialization; platform_init, clock, pmic, uart, emi, load_images"
+      },
+      "usbdl_handler": {
+        "addr": "0x00207854",
+        "desc": "DevAPC domain firewall setup and USB download handler entry (INFRA_AO, PERI_AO, FMEM_AO)"
+      },
+      "usbdl_cmd_loop": {
+        "addr": "0x00207E3C",
+        "desc": "MediaTek USB Download command dispatcher; 0xA0 sync, 0xD7 DA download & verify, 0xD5 jump DA"
+      },
+      "stride_table": {
+        "addr": "0x0022AAEC",
+        "desc": "MSDC/eMMC/SD host controller and memory card initialization and command state machine"
+      },
+      "susbdl_cfg": {
+        "addr": "0x0023AA44",
+        "desc": "Secure USB Download timeout configuration and buffer flush driver routine"
+      }
     }
   },
   "registers": {
@@ -415,6 +546,417 @@
         "replacement_capacity": 216,
         "desc": "Unused engineering USB-to-JTAG command handler"
       }
+    }
+  },
+  "stock_tee_sha256": "0a961a9940f01090005bf5ce1cd33d58c835f8d0925ba28bd187b114c582db44",
+  "stock_tee_b_sha256": "0a961a9940f01090005bf5ce1cd33d58c835f8d0925ba28bd187b114c582db44",
+  "stock_tee_a_sha256": "8aede55c90338c5ccac7a61e2b8de312509ad06b95a22998550188c4da14327b",
+  "tee_partitions": {
+    "tee_a": {
+      "block_device": "/dev/block/by-name/tee_a",
+      "partition_node": "/dev/block/sdc32",
+      "container_size_bytes": 5242880,
+      "container_size_mib": 5.0,
+      "used_bytes": 768630,
+      "unallocated_free_bytes": 4474250,
+      "unallocated_free_mib": 4.267,
+      "sha256": "8aede55c90338c5ccac7a61e2b8de312509ad06b95a22998550188c4da14327b"
+    },
+    "tee_b": {
+      "block_device": "/dev/block/by-name/tee_b",
+      "partition_node": "/dev/block/sdc57",
+      "container_size_bytes": 6291456,
+      "container_size_mib": 6.0,
+      "used_bytes": 768630,
+      "unallocated_free_bytes": 5522826,
+      "unallocated_free_mib": 5.267,
+      "sha256": "0a961a9940f01090005bf5ce1cd33d58c835f8d0925ba28bd187b114c582db44"
+    }
+  },
+  "smc_services": {
+    "MTK_SIP_KERNEL_BOOT": {
+      "fid32": "0x82000115",
+      "fid64": "0xC2000115",
+      "addr": "0x0000000048204DD0",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_BOOT"
+    },
+    "MTK_SIP_MTK_LPM_CONTROL": {
+      "fid32": "0x82000507",
+      "fid64": "0xC2000507",
+      "addr": "0x000000004820A5B4",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_MTK_LPM_CONTROL"
+    },
+    "MTK_SIP_BL_LPM_CONTROL": {
+      "fid32": "0x82000410",
+      "fid64": "0xC2000410",
+      "addr": "0x000000004820A600",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_BL_LPM_CONTROL"
+    },
+    "MTK_SIP_KERNEL_TIME_SYNC": {
+      "fid32": "0x82000202",
+      "fid64": "0xC2000202",
+      "addr": "0x000000004821E680",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_TIME_SYNC"
+    },
+    "MTK_SIP_KERNEL_CCCI_CONTROL": {
+      "fid32": "0x82000505",
+      "fid64": "0xC2000505",
+      "addr": "0x0000000048205668",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_CCCI_CONTROL"
+    },
+    "MTK_SIP_LK_CCCI_CONTROL": {
+      "fid32": "0x8200040B",
+      "fid64": "0xC200040B",
+      "addr": "0x000000004820555C",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_LK_CCCI_CONTROL"
+    },
+    "MTK_SIP_TEE_HAL_APC_SET": {
+      "fid32": "0x82000043",
+      "fid64": "0xC2000043",
+      "addr": "0x0000000048218C70",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_TEE_HAL_APC_SET"
+    },
+    "MTK_SIP_TEE_HAL_MASTER_TRANS": {
+      "fid32": "0x82000044",
+      "fid64": "0xC2000044",
+      "addr": "0x0000000048218CC8",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_TEE_HAL_MASTER_TRANS"
+    },
+    "MTK_SIP_HYP_DEVAPC_CTRL": {
+      "fid32": "0x82000804",
+      "fid64": "0xC2000804",
+      "addr": "0x0000000048217B00",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_HYP_DEVAPC_CTRL"
+    },
+    "MTK_SIP_LK_DAPC_INIT": {
+      "fid32": "0x82000101",
+      "fid64": "0xC2000101",
+      "addr": "0x00000000482071F0",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_LK_DAPC_INIT"
+    },
+    "MTK_SIP_KERNEL_DAPC_PERM_GET": {
+      "fid32": "0x8200026B",
+      "fid64": "0xC200026B",
+      "addr": "0x0000000048207194",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_DAPC_PERM_GET"
+    },
+    "MTK_SIP_KERNEL_CLR_SRAMROM_VIO": {
+      "fid32": "0x8200026C",
+      "fid64": "0xC200026C",
+      "addr": "0x000000004821B528",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_CLR_SRAMROM_VIO"
+    },
+    "MTK_SIP_KERNEL_DAPC_CAM_CONTROL": {
+      "fid32": "0x8200052D",
+      "fid64": "0xC200052D",
+      "addr": "0x0000000048217C40",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_DAPC_CAM_CONTROL"
+    },
+    "MTK_SIP_KERNEL_DAPC_MMUP_CONTROL": {
+      "fid32": "0x8200052E",
+      "fid64": "0xC200052E",
+      "addr": "0x0000000048217C5C",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_DAPC_MMUP_CONTROL"
+    },
+    "MTK_SIP_KERNEL_DAPC_MMUP_GET": {
+      "fid32": "0x82000531",
+      "fid64": "0xC2000531",
+      "addr": "0x0000000048207250",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_DAPC_MMUP_GET"
+    },
+    "MTK_SIP_HYP_GET_RND": {
+      "fid32": "0x82000810",
+      "fid64": "0xC2000810",
+      "addr": "0x0000000048210E3C",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_HYP_GET_RND"
+    },
+    "MTK_SIP_LK_GET_RND": {
+      "fid32": "0x82000110",
+      "fid64": "0xC2000110",
+      "addr": "0x0000000048210E3C",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_LK_GET_RND"
+    },
+    "MTK_SIP_KERNEL_GET_RND": {
+      "fid32": "0x8200026A",
+      "fid64": "0xC200026A",
+      "addr": "0x0000000048210EA0",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_GET_RND"
+    },
+    "MTK_SIP_LK_ROOT_OF_TRUST": {
+      "fid32": "0x82000120",
+      "fid64": "0xC2000120",
+      "addr": "0x00000000482188E4",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_LK_ROOT_OF_TRUST"
+    },
+    "MTK_SIP_GET_ROOT_OF_TRUST": {
+      "fid32": "0x82000020",
+      "fid64": "0xC2000020",
+      "addr": "0x0000000048217A1C",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_GET_ROOT_OF_TRUST"
+    },
+    "MTK_SIP_LK_CRYPTO_HW_ENGINE_INIT": {
+      "fid32": "0x8200010B",
+      "fid64": "0xC200010B",
+      "addr": "0x0000000048204A20",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_LK_CRYPTO_HW_ENGINE_INIT"
+    },
+    "MTK_SIP_LK_CRYPTO_HW_ENGINE_DISABLE": {
+      "fid32": "0x8200010C",
+      "fid64": "0xC200010C",
+      "addr": "0x0000000048204A5C",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_LK_CRYPTO_HW_ENGINE_DISABLE"
+    },
+    "MTK_SIP_LK_CRYPTO_SHA256_INIT": {
+      "fid32": "0x8200010D",
+      "fid64": "0xC200010D",
+      "addr": "0x0000000048204A8C",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_LK_CRYPTO_SHA256_INIT"
+    },
+    "MTK_SIP_LK_CRYPTO_SHA256_PROCESS": {
+      "fid32": "0x8200010E",
+      "fid64": "0xC200010E",
+      "addr": "0x0000000048204AA4",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_LK_CRYPTO_SHA256_PROCESS"
+    },
+    "MTK_SIP_LK_CRYPTO_SHA256_DONE": {
+      "fid32": "0x8200010F",
+      "fid64": "0xC200010F",
+      "addr": "0x0000000048204A74",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_LK_CRYPTO_SHA256_DONE"
+    },
+    "MTK_SIP_LK_CRYPTO_SHA384_INIT": {
+      "fid32": "0x82000111",
+      "fid64": "0xC2000111",
+      "addr": "0x0000000048204AD4",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_LK_CRYPTO_SHA384_INIT"
+    },
+    "MTK_SIP_LK_CRYPTO_SHA384_PROCESS": {
+      "fid32": "0x82000112",
+      "fid64": "0xC2000112",
+      "addr": "0x0000000048204AEC",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_LK_CRYPTO_SHA384_PROCESS"
+    },
+    "MTK_SIP_LK_CRYPTO_SHA384_DONE": {
+      "fid32": "0x82000113",
+      "fid64": "0xC2000113",
+      "addr": "0x0000000048204ABC",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_LK_CRYPTO_SHA384_DONE"
+    },
+    "MTK_SIP_HYP_STATIC_SECMEM_GET": {
+      "fid32": "0x82000811",
+      "fid64": "0xC2000811",
+      "addr": "0x0000000048218410",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_HYP_STATIC_SECMEM_GET"
+    },
+    "MTK_SIP_TEE_STATIC_SECMEM_GET": {
+      "fid32": "0x82000045",
+      "fid64": "0xC2000045",
+      "addr": "0x0000000048218D20",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_TEE_STATIC_SECMEM_GET"
+    },
+    "MTK_SIP_TEE_MPU_PERM_SET": {
+      "fid32": "0x82000031",
+      "fid64": "0xC2000031",
+      "addr": "0x0000000048218D4C",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_TEE_MPU_PERM_SET"
+    },
+    "MTK_SIP_HYP_MPU_PERM_SET": {
+      "fid32": "0x82000803",
+      "fid64": "0xC2000803",
+      "addr": "0x0000000048217AD8",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_HYP_MPU_PERM_SET"
+    },
+    "MTK_SIP_HYP_MPU_FEAT_PERM_SET": {
+      "fid32": "0x82000807",
+      "fid64": "0xC2000807",
+      "addr": "0x0000000048217AB4",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_HYP_MPU_FEAT_PERM_SET"
+    },
+    "MTK_SIP_BL33_MPU_PERM_SET": {
+      "fid32": "0x82000128",
+      "fid64": "0xC2000128",
+      "addr": "0x000000004821711C",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_BL33_MPU_PERM_SET"
+    },
+    "MTK_SIP_KERNEL_TMEM_CONTROL": {
+      "fid32": "0x82000524",
+      "fid64": "0xC2000524",
+      "addr": "0x0000000048218378",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_TMEM_CONTROL"
+    },
+    "MTK_SIP_KERNEL_DEVMPU_VIO_GET": {
+      "fid32": "0x82000264",
+      "fid64": "0xC2000264",
+      "addr": "0x0000000048217144",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_DEVMPU_VIO_GET"
+    },
+    "MTK_SIP_KERNEL_GIC_OP": {
+      "fid32": "0x82000526",
+      "fid64": "0xC2000526",
+      "addr": "0x0000000048209E90",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_GIC_OP"
+    },
+    "MTK_SIP_BL_DCM_CONTROL": {
+      "fid32": "0x82000417",
+      "fid64": "0xC2000417",
+      "addr": "0x000000004820EC6C",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_BL_DCM_CONTROL"
+    },
+    "MTK_SIP_KERNEL_CLKBUF_CONTROL": {
+      "fid32": "0x82000533",
+      "fid64": "0xC2000533",
+      "addr": "0x0000000048205768",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_CLKBUF_CONTROL"
+    },
+    "MTK_SIP_VCORE_CONTROL": {
+      "fid32": "0x82000506",
+      "fid64": "0xC2000506",
+      "addr": "0x0000000048210B00",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_VCORE_CONTROL"
+    },
+    "MTK_SIP_KERNEL_PTP3_CONTROL": {
+      "fid32": "0x82000522",
+      "fid64": "0xC2000522",
+      "addr": "0x0000000048213FD8",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_PTP3_CONTROL"
+    },
+    "MTK_SIP_SCP_DVFS_CONTROL": {
+      "fid32": "0x82000232",
+      "fid64": "0xC2000232",
+      "addr": "0x00000000482155DC",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_SCP_DVFS_CONTROL"
+    },
+    "MTK_SIP_BL_TINYSYS_SCP_CONTROL": {
+      "fid32": "0x8200040F",
+      "fid64": "0xC200040F",
+      "addr": "0x000000004821D658",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_BL_TINYSYS_SCP_CONTROL"
+    },
+    "MTK_SIP_TINYSYS_SCP_CONTROL": {
+      "fid32": "0x82000528",
+      "fid64": "0xC2000528",
+      "addr": "0x000000004821CE98",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_TINYSYS_SCP_CONTROL"
+    },
+    "MTK_SIP_TEE_DEINT_CONTROL": {
+      "fid32": "0x82000046",
+      "fid64": "0xC2000046",
+      "addr": "0x00000000482099C0",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_TEE_DEINT_CONTROL"
+    },
+    "MTK_SIP_KERNEL_UFS_CONTROL": {
+      "fid32": "0x82000276",
+      "fid64": "0xC2000276",
+      "addr": "0x000000004821E298",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_UFS_CONTROL"
+    },
+    "MTK_SIP_BL_UFS_CONTROL": {
+      "fid32": "0x8200040D",
+      "fid64": "0xC200040D",
+      "addr": "0x000000004821E144",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_BL_UFS_CONTROL"
+    },
+    "MTK_SIP_HYP_SECIO_WRITE": {
+      "fid32": "0x82000812",
+      "fid64": "0xC2000812",
+      "addr": "0x0000000048217C1C",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_HYP_SECIO_WRITE"
+    },
+    "MTK_SIP_HYP_SECIO_READ": {
+      "fid32": "0x82000813",
+      "fid64": "0xC2000813",
+      "addr": "0x0000000048217BC0",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_HYP_SECIO_READ"
+    },
+    "MTK_SIP_HYP_EL3_ERET_DONE": {
+      "fid32": "0x82000820",
+      "fid64": "0xC2000820",
+      "addr": "0x0000000048217BA0",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_HYP_EL3_ERET_DONE"
+    },
+    "MTK_SIP_HYP_SMC_TO_EL2_RET": {
+      "fid32": "0x82000821",
+      "fid64": "0xC2000821",
+      "addr": "0x0000000048217C20",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_HYP_SMC_TO_EL2_RET"
+    },
+    "MTK_SIP_HYP_SMC_TO_EL2_RKP": {
+      "fid32": "0x82000822",
+      "fid64": "0xC2000822",
+      "addr": "0x0000000048217C20",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_HYP_SMC_TO_EL2_RKP"
+    },
+    "MTK_SIP_HYP_SMC_TO_EL2_TEE": {
+      "fid32": "0x82000823",
+      "fid64": "0xC2000823",
+      "addr": "0x0000000048217C20",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_HYP_SMC_TO_EL2_TEE"
+    },
+    "MTK_SIP_BL_DFD_MCU_CONTROL": {
+      "fid32": "0x82000416",
+      "fid64": "0xC2000416",
+      "addr": "0x00000000482172CC",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_BL_DFD_MCU_CONTROL"
+    },
+    "MTK_IOMMU_SECURE_CONTROL": {
+      "fid32": "0x82000514",
+      "fid64": "0xC2000514",
+      "addr": "0x000000004820F110",
+      "desc": "MediaTek SiP SMC handler for MTK_IOMMU_SECURE_CONTROL"
+    },
+    "MTK_SIP_HYP_IOMMU_GZ_CONTROL": {
+      "fid32": "0x82000830",
+      "fid64": "0xC2000830",
+      "addr": "0x000000004820F010",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_HYP_IOMMU_GZ_CONTROL"
+    },
+    "MTK_SIP_BL_MMC_CONTROL": {
+      "fid32": "0x82000414",
+      "fid64": "0xC2000414",
+      "addr": "0x000000004820C2E0",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_BL_MMC_CONTROL"
+    },
+    "MTK_SIP_KERNEL_MMC_CONTROL": {
+      "fid32": "0x82000273",
+      "fid64": "0xC2000273",
+      "addr": "0x000000004820C404",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_MMC_CONTROL"
+    },
+    "MTK_SIP_LK_FILL_MD_PUBK_HASH": {
+      "fid32": "0x82000102",
+      "fid64": "0xC2000102",
+      "addr": "0x0000000048215868",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_LK_FILL_MD_PUBK_HASH"
+    },
+    "MTK_SIP_EMIDBG_CONTROL": {
+      "fid32": "0x8200050B",
+      "fid64": "0xC200050B",
+      "addr": "0x00000000482179C4",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_EMIDBG_CONTROL"
+    },
+    "MTK_SIP_BL_EMIMPU_CONTROL": {
+      "fid32": "0x82000415",
+      "fid64": "0xC2000415",
+      "addr": "0x00000000482179E8",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_BL_EMIMPU_CONTROL"
+    },
+    "MTK_SIP_TEE_EMI_MPU_CONTROL": {
+      "fid32": "0x82000048",
+      "fid64": "0xC2000048",
+      "addr": "0x0000000048218CF4",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_TEE_EMI_MPU_CONTROL"
+    },
+    "MTK_SIP_KERNEL_USB_CONTROL": {
+      "fid32": "0x82000527",
+      "fid64": "0xC2000527",
+      "addr": "0x000000004821E6F4",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_KERNEL_USB_CONTROL"
+    },
+    "MTK_SIP_AUDIO_CONTROL": {
+      "fid32": "0x82000517",
+      "fid64": "0xC2000517",
+      "addr": "0x0000000048204308",
+      "desc": "MediaTek SiP SMC handler for MTK_SIP_AUDIO_CONTROL"
     }
   }
 }

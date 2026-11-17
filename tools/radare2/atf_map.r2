@@ -1,0 +1,93 @@
+# atf_map.r2 — Radare2 Analysis Script for ARM Trusted Firmware (TF-A BL31)
+# Target: ADVAN X1 (Firmware Baseline v5)
+# Usage: r2 -i atf_map.r2 -B 0x0000000048200000 00_atf.bin
+
+e asm.arch = arm
+e asm.bits = 64
+e asm.cpu = armv8.2-a
+e io.va = true
+
+# Verified ATF entry point and runtime service symbols
+f sym.atf_entry                  = 0x0000000048200000
+f sym.vbar_el3                   = 0x000000004821f800
+f sym.rt_svc_mtk_smc             = 0x000000004820f880
+f sym.rt_svc_arm_arch            = 0x0000000048202834
+f sym.rt_svc_std                 = 0x000000004821bfec
+f sym.rt_svc_tbase_fastcall      = 0x000000004821c3ec
+f sym.rt_svc_tbase_smc           = 0x000000004821cbc4
+f sym.sip_kernel_boot            = 0x0000000048204dd0
+f sym.sip_lk_dapc_init           = 0x00000000482071f0
+f sym.sip_lk_root_of_trust       = 0x00000000482188e4
+f sym.sip_bl33_mpu_perm_set      = 0x000000004821711c
+f sym.sip_hyp_devapc_ctrl        = 0x0000000048217b00
+f sym.sip_hyp_static_secmem_get  = 0x0000000048218410
+f sym.sip_hyp_el3_eret_done      = 0x0000000048217ba0
+f sym.sip_hyp_smc_to_el2_ret     = 0x0000000048217c20
+f sym.smc_mtk_sip_kernel_boot    = 0x0000000048204dd0
+f sym.smc_mtk_sip_mtk_lpm_control = 0x000000004820a5b4
+f sym.smc_mtk_sip_bl_lpm_control = 0x000000004820a600
+f sym.smc_mtk_sip_kernel_time_sync = 0x000000004821e680
+f sym.smc_mtk_sip_kernel_ccci_control = 0x0000000048205668
+f sym.smc_mtk_sip_lk_ccci_control = 0x000000004820555c
+f sym.smc_mtk_sip_tee_hal_apc_set = 0x0000000048218c70
+f sym.smc_mtk_sip_tee_hal_master_trans = 0x0000000048218cc8
+f sym.smc_mtk_sip_hyp_devapc_ctrl = 0x0000000048217b00
+f sym.smc_mtk_sip_lk_dapc_init   = 0x00000000482071f0
+f sym.smc_mtk_sip_kernel_dapc_perm_get = 0x0000000048207194
+f sym.smc_mtk_sip_kernel_clr_sramrom_vio = 0x000000004821b528
+f sym.smc_mtk_sip_kernel_dapc_cam_control = 0x0000000048217c40
+f sym.smc_mtk_sip_kernel_dapc_mmup_control = 0x0000000048217c5c
+f sym.smc_mtk_sip_kernel_dapc_mmup_get = 0x0000000048207250
+f sym.smc_mtk_sip_hyp_get_rnd    = 0x0000000048210e3c
+f sym.smc_mtk_sip_lk_get_rnd     = 0x0000000048210e3c
+f sym.smc_mtk_sip_kernel_get_rnd = 0x0000000048210ea0
+f sym.smc_mtk_sip_lk_root_of_trust = 0x00000000482188e4
+f sym.smc_mtk_sip_get_root_of_trust = 0x0000000048217a1c
+f sym.smc_mtk_sip_lk_crypto_hw_engine_init = 0x0000000048204a20
+f sym.smc_mtk_sip_lk_crypto_hw_engine_disable = 0x0000000048204a5c
+f sym.smc_mtk_sip_lk_crypto_sha256_init = 0x0000000048204a8c
+f sym.smc_mtk_sip_lk_crypto_sha256_process = 0x0000000048204aa4
+f sym.smc_mtk_sip_lk_crypto_sha256_done = 0x0000000048204a74
+f sym.smc_mtk_sip_lk_crypto_sha384_init = 0x0000000048204ad4
+f sym.smc_mtk_sip_lk_crypto_sha384_process = 0x0000000048204aec
+f sym.smc_mtk_sip_lk_crypto_sha384_done = 0x0000000048204abc
+f sym.smc_mtk_sip_hyp_static_secmem_get = 0x0000000048218410
+f sym.smc_mtk_sip_tee_static_secmem_get = 0x0000000048218d20
+f sym.smc_mtk_sip_tee_mpu_perm_set = 0x0000000048218d4c
+f sym.smc_mtk_sip_hyp_mpu_perm_set = 0x0000000048217ad8
+f sym.smc_mtk_sip_hyp_mpu_feat_perm_set = 0x0000000048217ab4
+f sym.smc_mtk_sip_bl33_mpu_perm_set = 0x000000004821711c
+f sym.smc_mtk_sip_kernel_tmem_control = 0x0000000048218378
+f sym.smc_mtk_sip_kernel_devmpu_vio_get = 0x0000000048217144
+f sym.smc_mtk_sip_kernel_gic_op  = 0x0000000048209e90
+f sym.smc_mtk_sip_bl_dcm_control = 0x000000004820ec6c
+f sym.smc_mtk_sip_kernel_clkbuf_control = 0x0000000048205768
+f sym.smc_mtk_sip_vcore_control  = 0x0000000048210b00
+f sym.smc_mtk_sip_kernel_ptp3_control = 0x0000000048213fd8
+f sym.smc_mtk_sip_scp_dvfs_control = 0x00000000482155dc
+f sym.smc_mtk_sip_bl_tinysys_scp_control = 0x000000004821d658
+f sym.smc_mtk_sip_tinysys_scp_control = 0x000000004821ce98
+f sym.smc_mtk_sip_tee_deint_control = 0x00000000482099c0
+f sym.smc_mtk_sip_kernel_ufs_control = 0x000000004821e298
+f sym.smc_mtk_sip_bl_ufs_control = 0x000000004821e144
+f sym.smc_mtk_sip_hyp_secio_write = 0x0000000048217c1c
+f sym.smc_mtk_sip_hyp_secio_read = 0x0000000048217bc0
+f sym.smc_mtk_sip_hyp_el3_eret_done = 0x0000000048217ba0
+f sym.smc_mtk_sip_hyp_smc_to_el2_ret = 0x0000000048217c20
+f sym.smc_mtk_sip_hyp_smc_to_el2_rkp = 0x0000000048217c20
+f sym.smc_mtk_sip_hyp_smc_to_el2_tee = 0x0000000048217c20
+f sym.smc_mtk_sip_bl_dfd_mcu_control = 0x00000000482172cc
+f sym.smc_mtk_iommu_secure_control = 0x000000004820f110
+f sym.smc_mtk_sip_hyp_iommu_gz_control = 0x000000004820f010
+f sym.smc_mtk_sip_bl_mmc_control = 0x000000004820c2e0
+f sym.smc_mtk_sip_kernel_mmc_control = 0x000000004820c404
+f sym.smc_mtk_sip_lk_fill_md_pubk_hash = 0x0000000048215868
+f sym.smc_mtk_sip_emidbg_control = 0x00000000482179c4
+f sym.smc_mtk_sip_bl_emimpu_control = 0x00000000482179e8
+f sym.smc_mtk_sip_tee_emi_mpu_control = 0x0000000048218cf4
+f sym.smc_mtk_sip_kernel_usb_control = 0x000000004821e6f4
+f sym.smc_mtk_sip_audio_control  = 0x0000000048204308
+
+# Seek to ATF entry
+s sym.atf_entry
+pdf

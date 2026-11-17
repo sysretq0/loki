@@ -4,7 +4,7 @@
 PYTHON ?= python3
 LOKI   ?= ./loki
 
-.PHONY: all help test verify proof deadcode devices gen-header clean
+.PHONY: all help test verify proof deadcode scan-atf scan-pl devices gen-header clean
 
 all: verify proof deadcode
 
@@ -17,12 +17,14 @@ help:
 	@echo "  make verify        Validate schemas, headers, and firmware consistency"
 	@echo "  make proof         Build & verify 164-byte proof hook placement"
 	@echo "  make deadcode      Scan hardware strapping & dead-code caves"
+	@echo "  make scan-atf      Scan ARM Trusted Firmware (BL31) vectors & SMCs"
+	@echo "  make scan-pl       Scan MediaTek Preloader (BL2) GFH & USBDL loop"
 	@echo "  make devices       List all mapped device profiles"
 	@echo "  make gen-header    Regenerate C header & disasm scripts (pass DEVICE=path/to/device.json)"
 	@echo "  make clean         Clean build artifacts and bytecode caches"
 	@echo ""
 	@echo "Environment overrides:"
-	@echo "  FW=/path/to/lk.img Override target firmware container"
+	@echo "  FW=/path/to/img    Override target firmware container (lk.img, tee.img, or preloader.img)"
 	@echo "  DEVICE=devices/... Validate/generate for a specific device"
 
 verify:
@@ -33,6 +35,12 @@ proof:
 
 deadcode:
 	@$(PYTHON) tools/capstone/scan_deadcode.py $(FW)
+
+scan-atf:
+	@$(PYTHON) tools/capstone/scan_atf.py $(FW)
+
+scan-pl:
+	@$(PYTHON) tools/capstone/scan_preloader.py $(FW)
 
 devices:
 	@$(PYTHON) loki devices

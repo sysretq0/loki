@@ -52,12 +52,13 @@ def generate_header(json_path, out_h_path=None):
             hdr_ofs = info.get("header_offset", info.get("offset", "0x000000"))
             pay_ofs = info.get("payload_offset", f"0x{int(hdr_ofs, 16)+512:06X}")
             pay_sz = info.get("payload_size", info.get("size", "0x0"))
-            sz_bytes = info.get("size_bytes", int(pay_sz, 16) if pay_sz.startswith("0x") else 0)
+            sz_bytes = int(pay_sz, 16) if pay_sz.startswith("0x") else info.get("size_bytes", 0)
             span = info.get("container_span", "0x0")
             load_addr = info.get("load_addr")
 
-            lines.append(f"#define SUBPART_{u}_OFFSET            {hdr_ofs}ULL  /* mkimg header container offset */")
-            lines.append(f"#define SUBPART_{u}_PAYLOAD_OFFSET    {pay_ofs}ULL  /* raw payload container offset (header + 512) */")
+            hdr_delta = (int(pay_ofs, 16) - int(hdr_ofs, 16)) if (pay_ofs.startswith("0x") and hdr_ofs.startswith("0x")) else 512
+            lines.append(f"#define SUBPART_{u}_OFFSET            {hdr_ofs}ULL  /* container header offset */")
+            lines.append(f"#define SUBPART_{u}_PAYLOAD_OFFSET    {pay_ofs}ULL  /* raw payload container offset (header + {hdr_delta}) */")
             lines.append(f"#define SUBPART_{u}_SIZE              {pay_sz}ULL  /* {sz_bytes:,} bytes (raw execution payload) */")
             if span and span != "0x0":
                 lines.append(f"#define SUBPART_{u}_CONTAINER_SPAN    {span}ULL")
@@ -116,6 +117,53 @@ def generate_header(json_path, out_h_path=None):
             lines.append(f"#define ADDR_AEE_{u:<28} {addr}ULL")
         lines.append("")
 
+    # Symbols: ATF
+    atf_syms = symbols.get("atf", {})
+    if atf_syms:
+        lines.append("/* --- ARM Trusted Firmware (TF-A / BL31 / Secure EL3) Verified Functions --- */")
+        for sym_name, sym_info in atf_syms.items():
+            addr = sym_info["addr"]
+            u = sym_name.upper()
+            if sym_name == "_start":
+                lines.append(f"#define ADDR_ATF__START              {addr}ULL")
+                lines.append("#define ADDR_ATF_ENTRY               ADDR_ATF__START")
+            elif sym_name == "vbar_el3":
+                lines.append(f"#define ADDR_ATF_VBAR_EL3            {addr}ULL")
+            else:
+                lines.append(f"#define ADDR_ATF_{u:<28} {addr}ULL")
+        lines.append("")
+
+    # MediaTek SiP SMC Services
+    smc_svcs = data.get("smc_services", {})
+    if smc_svcs:
+        lines.append("/* --- MediaTek SiP SMC Services (Registered in ATF BL31) --- */")
+        for svc_name, svc_info in smc_svcs.items():
+            clean_name = svc_name.upper()
+            fid64 = svc_info.get("fid64")
+            fid32 = svc_info.get("fid32")
+            addr = svc_info.get("addr")
+            if fid64:
+                lines.append(f"#define SMC_FID_{clean_name:<32} {fid64}ULL")
+            if fid32:
+                lines.append(f"#define SMC_FID_{clean_name}_AARCH32 {fid32}ULL")
+            if addr:
+                lines.append(f"#define ADDR_ATF_SMC_{clean_name:<28} {addr}ULL")
+        lines.append("")
+
+    # Symbols: Preloader
+    pl_syms = symbols.get("preloader", {})
+    if pl_syms:
+        lines.append("/* --- MediaTek Preloader (BL2 / AArch32 SRAM) Verified Functions --- */")
+        for sym_name, sym_info in pl_syms.items():
+            addr = sym_info["addr"]
+            u = sym_name.upper()
+            if sym_name == "_start":
+                lines.append(f"#define ADDR_PL__START               {addr}ULL")
+                lines.append("#define ADDR_PL_ENTRY                ADDR_PL__START")
+            else:
+                lines.append(f"#define ADDR_PL_{u:<29} {addr}ULL")
+        lines.append("")
+
     # MMIO Registers
     registers = data.get("registers", {})
     if registers:
@@ -153,6 +201,30 @@ def generate_header(json_path, out_h_path=None):
         lines.append(f"#define UNALLOCATED_FLASH_OFFSET     {unalloc['offset_start']}ULL")
         lines.append(f"#define UNALLOCATED_FLASH_SIZE       0x{unalloc['free_space_bytes']:X}ULL  /* {unalloc['free_space_bytes']:,} bytes */")
         lines.append(f"#define CONTAINER_TOTAL_SIZE         0x{unalloc['container_size_bytes']:X}ULL  /* {unalloc['container_size_bytes']:,} bytes (4 MiB) */\n")
+
+    # TEE Partition Flash Geometry (Slot A vs Slot B)
+    tee_parts = data.get("tee_partitions", {})
+    if tee_parts:
+        lines.append("/* --- TEE Container Partition Free Space (Slot A vs Slot B Geometry) --- */")
+        if "tee_a" in tee_parts:
+            ta = tee_parts["tee_a"]
+            lines.append(f"#define TEE_A_CONTAINER_SIZE_BYTES   {ta['container_size_bytes']}ULL  /* 5.0 MiB on sdc32 */")
+            lines.append(f"#define TEE_A_FREE_SPACE_BYTES       {ta['unallocated_free_bytes']}ULL  /* ~4.27 MiB pure 0x00 space */")
+        if "tee_b" in tee_parts:
+            tb = tee_parts["tee_b"]
+            lines.append(f"#define TEE_B_CONTAINER_SIZE_BYTES   {tb['container_size_bytes']}ULL  /* 6.0 MiB on sdc57 */")
+            lines.append(f"#define TEE_B_FREE_SPACE_BYTES       {tb['unallocated_free_bytes']}ULL  /* ~5.27 MiB pure 0x00 space (1 MiB more than slot _a) */")
+        lines.append("")
+
+    # Preloader Partition Flash Geometry
+    if "preloader" in data.get("subpartitions", {}):
+        pl_sub = data["subpartitions"]["preloader"]
+        lines.append("/* --- MediaTek Preloader Flash Partition & Execution Geometry --- */")
+        lines.append(f"#define PRELOADER_LOAD_ADDR          {pl_sub.get('load_addr', '0x00201000')}ULL  /* Internal SRAM (AArch32 EL3) */")
+        lines.append(f"#define PRELOADER_TOTAL_SIZE         {pl_sub.get('size', '0x058F6C')}ULL  /* {pl_sub.get('size_bytes', 364396):,} bytes */")
+        lines.append(f"#define PRELOADER_PAYLOAD_OFFSET     {pl_sub.get('payload_offset', '0x0010F0')}ULL")
+        lines.append("#define PRELOADER_CONTAINER_SIZE     0x400000ULL  /* 4 MiB UFS boot LUN (sda/sdb) */")
+        lines.append("#define PRELOADER_FREE_SPACE_BYTES   3825812ULL   /* ~3.65 MiB trailing pure 0x00 space */\n")
 
     # Hook Sites
     hooks = data.get("hooks", {})
@@ -282,6 +354,186 @@ def generate_rizin_script(json_path, out_rz_path=None):
         print(f"[+] Rizin script generated: {out_rz_path}")
     return content
 
+def generate_atf_r2_script(json_path, out_r2_path=None):
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    device_name = data.get("device", "Unknown Device")
+    fw_ver = data.get("firmware_version", "v1")
+    atf_base = data.get("subpartitions", {}).get("atf", {}).get("load_addr", "0x48200000").lower()
+
+    lines = [
+        "# atf_map.r2 — Radare2 Analysis Script for ARM Trusted Firmware (TF-A BL31)",
+        f"# Target: {device_name} (Firmware Baseline {fw_ver})",
+        f"# Usage: r2 -i {os.path.basename(out_r2_path) if out_r2_path else 'atf_map.r2'} -B {atf_base} 00_atf.bin",
+        "",
+        "e asm.arch = arm",
+        "e asm.bits = 64",
+        "e asm.cpu = armv8.2-a",
+        "e io.va = true",
+        "",
+        "# Verified ATF entry point and runtime service symbols",
+    ]
+
+    symbols = data.get("symbols", {}).get("atf", {})
+    for sym_name, sym_info in symbols.items():
+        addr = sym_info["addr"].lower()
+        clean_name = "atf_entry" if sym_name == "_start" else sym_name
+        lines.append(f"f sym.{clean_name:<26} = {addr}")
+
+    smc_svcs = data.get("smc_services", {})
+    for svc_name, svc_info in smc_svcs.items():
+        addr = svc_info.get("addr", "").lower()
+        if addr:
+            lines.append(f"f sym.smc_{svc_name.lower():<22} = {addr}")
+
+    lines.extend([
+        "",
+        "# Seek to ATF entry",
+        "s sym.atf_entry",
+        "pdf",
+        ""
+    ])
+
+    content = "\n".join(lines)
+    if out_r2_path:
+        with open(out_r2_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        print(f"[+] ATF Radare2 script generated: {out_r2_path}")
+    return content
+
+def generate_atf_rizin_script(json_path, out_rz_path=None):
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    device_name = data.get("device", "Unknown Device")
+    fw_ver = data.get("firmware_version", "v1")
+    atf_base = data.get("subpartitions", {}).get("atf", {}).get("load_addr", "0x48200000").lower()
+
+    lines = [
+        "# atf_map.rz — Rizin Analysis Script for ARM Trusted Firmware (TF-A BL31)",
+        f"# Target: {device_name} (Firmware Baseline {fw_ver})",
+        f"# Usage: rz -i {os.path.basename(out_rz_path) if out_rz_path else 'atf_map.rz'} -m {atf_base} 00_atf.bin",
+        "",
+        "e asm.arch = arm",
+        "e asm.bits = 64",
+        "e asm.cpu = armv8.2-a",
+        "e io.va = true",
+        "",
+        "# Verified ATF entry point and runtime service symbols",
+    ]
+
+    symbols = data.get("symbols", {}).get("atf", {})
+    for sym_name, sym_info in symbols.items():
+        addr = sym_info["addr"].lower()
+        clean_name = "atf_entry" if sym_name == "_start" else sym_name
+        lines.append(f"f sym.{clean_name:<26} = {addr}")
+
+    smc_svcs = data.get("smc_services", {})
+    for svc_name, svc_info in smc_svcs.items():
+        addr = svc_info.get("addr", "").lower()
+        if addr:
+            lines.append(f"f sym.smc_{svc_name.lower():<22} = {addr}")
+
+    lines.extend([
+        "",
+        "# Seek to ATF entry",
+        "s sym.atf_entry",
+        "pdf",
+        ""
+    ])
+
+    content = "\n".join(lines)
+    if out_rz_path:
+        with open(out_rz_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        print(f"[+] ATF Rizin script generated: {out_rz_path}")
+    return content
+
+def generate_pl_r2_script(json_path, out_r2_path=None):
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    device_name = data.get("device", "Unknown Device")
+    fw_ver = data.get("firmware_version", "v1")
+    pl_base = data.get("subpartitions", {}).get("preloader", {}).get("load_addr", "0x00201000").lower()
+
+    lines = [
+        "# pl_map.r2 — Radare2 Analysis Script for MediaTek Preloader (BL2 / AArch32)",
+        f"# Target: {device_name} (Firmware Baseline {fw_ver})",
+        f"# Usage: r2 -i {os.path.basename(out_r2_path) if out_r2_path else 'pl_map.r2'} -B {pl_base} 00_preloader.bin",
+        "",
+        "e asm.arch = arm",
+        "e asm.bits = 32",
+        "e asm.cpu = cortex-a55",
+        "e io.va = true",
+        "",
+        "# Verified Preloader entry point and hardware init symbols",
+    ]
+
+    symbols = data.get("symbols", {}).get("preloader", {})
+    for sym_name, sym_info in symbols.items():
+        addr = sym_info["addr"].lower()
+        clean_name = "pl_entry" if sym_name == "_start" else sym_name
+        lines.append(f"f sym.{clean_name:<26} = {addr}")
+
+    lines.extend([
+        "",
+        "# Seek to Preloader entry",
+        "s sym.pl_entry",
+        "pdf",
+        ""
+    ])
+
+    content = "\n".join(lines)
+    if out_r2_path:
+        with open(out_r2_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        print(f"[+] Preloader Radare2 script generated: {out_r2_path}")
+    return content
+
+def generate_pl_rizin_script(json_path, out_rz_path=None):
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    device_name = data.get("device", "Unknown Device")
+    fw_ver = data.get("firmware_version", "v1")
+    pl_base = data.get("subpartitions", {}).get("preloader", {}).get("load_addr", "0x00201000").lower()
+
+    lines = [
+        "# pl_map.rz — Rizin Analysis Script for MediaTek Preloader (BL2 / AArch32)",
+        f"# Target: {device_name} (Firmware Baseline {fw_ver})",
+        f"# Usage: rz -i {os.path.basename(out_rz_path) if out_rz_path else 'pl_map.rz'} -m {pl_base} 00_preloader.bin",
+        "",
+        "e asm.arch = arm",
+        "e asm.bits = 32",
+        "e asm.cpu = cortex-a55",
+        "e io.va = true",
+        "",
+        "# Verified Preloader entry point and hardware init symbols",
+    ]
+
+    symbols = data.get("symbols", {}).get("preloader", {})
+    for sym_name, sym_info in symbols.items():
+        addr = sym_info["addr"].lower()
+        clean_name = "pl_entry" if sym_name == "_start" else sym_name
+        lines.append(f"f sym.{clean_name:<26} = {addr}")
+
+    lines.extend([
+        "",
+        "# Seek to Preloader entry",
+        "s sym.pl_entry",
+        "pdf",
+        ""
+    ])
+
+    content = "\n".join(lines)
+    if out_rz_path:
+        with open(out_rz_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        print(f"[+] Preloader Rizin script generated: {out_rz_path}")
+    return content
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate C headers (.h), Radare2 (.r2), and Rizin (.rz) scripts from device JSON"
@@ -309,6 +561,17 @@ def main():
         generate_r2_script(args.device, r2_path)
     if rz_path:
         generate_rizin_script(args.device, rz_path)
+
+    if args.all:
+        atf_r2 = os.path.join(REPO_ROOT, "tools", "radare2", "atf_map.r2")
+        atf_rz = os.path.join(REPO_ROOT, "tools", "rizin", "atf_map.rz")
+        generate_atf_r2_script(args.device, atf_r2)
+        generate_atf_rizin_script(args.device, atf_rz)
+
+        pl_r2 = os.path.join(REPO_ROOT, "tools", "radare2", "pl_map.r2")
+        pl_rz = os.path.join(REPO_ROOT, "tools", "rizin", "pl_map.rz")
+        generate_pl_r2_script(args.device, pl_r2)
+        generate_pl_rizin_script(args.device, pl_rz)
 
 if __name__ == "__main__":
     main()

@@ -27,11 +27,15 @@ sys.path.insert(0, TOOLS_DIR)
 
 from common import (
     locate_firmware_image,
+    locate_tee_image,
+    locate_preloader_image,
     parse_mkimg_header,
+    parse_gfh_header,
     decode_aarch64_branch_target,
     is_aarch64_bl,
     MKIMG_MAGIC,
     MKIMG_HDR_SIZE,
+    GFH_MAGIC,
 )
 
 SCHEMA_PATH = os.path.join(REPO_ROOT, "schema", "device.schema.json")
@@ -79,9 +83,9 @@ def verify_device(json_path):
         defines = parse_header_defines(h_path)
         
         # 1. Forward check: JSON symbols -> Header defines
-        for sub_name in ["lk", "bl2_ext", "aee"]:
+        for sub_name in ["lk", "bl2_ext", "aee", "atf", "preloader"]:
             sub_syms = data.get("symbols", {}).get(sub_name, {})
-            prefix = f"ADDR_{sub_name.upper()}_"
+            prefix = "ADDR_PL_" if sub_name == "preloader" else f"ADDR_{sub_name.upper()}_"
             for sym_name, sym_info in sub_syms.items():
                 clean_name = sym_name.upper()
                 def_name = f"{prefix}{clean_name}"
@@ -91,6 +95,23 @@ def verify_device(json_path):
                 assert expected_addr == actual_addr, (
                     f"Address mismatch for {def_name}: JSON=0x{expected_addr:X}, Header=0x{actual_addr:X}"
                 )
+
+        # Forward check for MediaTek SiP SMC services
+        smc_svcs = data.get("smc_services", {})
+        for svc_name, svc_info in smc_svcs.items():
+            clean_name = svc_name.upper()
+            if "fid64" in svc_info:
+                fid_def = f"SMC_FID_{clean_name}"
+                assert fid_def in defines, f"Missing {fid_def} in header"
+                assert int(svc_info["fid64"], 16) == defines[fid_def]
+            if "fid32" in svc_info:
+                fid32_def = f"SMC_FID_{clean_name}_AARCH32"
+                assert fid32_def in defines, f"Missing {fid32_def} in header"
+                assert int(svc_info["fid32"], 16) == defines[fid32_def]
+            if "addr" in svc_info:
+                addr_def = f"ADDR_ATF_SMC_{clean_name}"
+                assert addr_def in defines, f"Missing {addr_def} in header"
+                assert int(svc_info["addr"], 16) == defines[addr_def]
 
         # 2. Reverse check: Header ADDR_* defines -> JSON symbols (prevent drift)
         for def_name, def_val in defines.items():
@@ -110,6 +131,24 @@ def verify_device(json_path):
             elif def_name.startswith("ADDR_AEE_"):
                 sym_key = def_name[len("ADDR_AEE_"):].lower()
                 assert sym_key in data["symbols"]["aee"], f"Header define {def_name} not found in JSON symbols.aee"
+            elif def_name.startswith("ADDR_ATF_SMC_"):
+                svc_key = def_name[len("ADDR_ATF_SMC_"):]
+                assert svc_key in smc_svcs, f"Header define {def_name} not found in smc_services"
+            elif def_name.startswith("ADDR_ATF_"):
+                sym_key = def_name[len("ADDR_ATF_"):].lower()
+                if sym_key == "entry": sym_key = "_start"
+                assert sym_key in data.get("symbols", {}).get("atf", {}), f"Header define {def_name} not found in JSON symbols.atf"
+            elif def_name.startswith("ADDR_PL_"):
+                sym_key = def_name[len("ADDR_PL_"):].lower()
+                if sym_key == "entry": sym_key = "_start"
+                assert sym_key in data.get("symbols", {}).get("preloader", {}), f"Header define {def_name} not found in JSON symbols.preloader"
+            elif def_name.startswith("SMC_FID_"):
+                fid_key = def_name[len("SMC_FID_"):]
+                if fid_key.endswith("_AARCH32"):
+                    fid_key = fid_key[:-len("_AARCH32")]
+                assert fid_key in smc_svcs, f"Header define {def_name} not found in smc_services"
+            elif def_name.startswith("TEE_A_") or def_name.startswith("TEE_B_") or def_name.startswith("PRELOADER_"):
+                pass
 
         # 3. Verify zero regions if present
         zero_regs = data.get("zero_regions", {}).get("lk", {})
@@ -248,6 +287,103 @@ def verify_binary(data, lk_img_path):
 
     print("    -> All binary assertions verified successfully.")
 
+def verify_tee_binary(data, tee_img_path):
+    print(f"\n[*] Auditing stock TEE firmware binary: {tee_img_path}")
+    with open(tee_img_path, "rb") as f:
+        img_bytes = f.read()
+
+    sha256 = hashlib.sha256(img_bytes).hexdigest()
+    print(f"    Container size: {len(img_bytes):,} bytes")
+    print(f"    Container SHA256: {sha256}")
+    if "stock_tee_sha256" in data:
+        assert sha256.lower() == data["stock_tee_sha256"].lower(), (
+            f"TEE SHA256 mismatch! Expected {data['stock_tee_sha256']}, got {sha256}"
+        )
+
+    # Check atf subpartition header
+    if "atf" in data.get("subpartitions", {}):
+        atf_sub = data["subpartitions"]["atf"]
+        hdr_ofs = int(atf_sub.get("header_offset", atf_sub["offset"]), 16)
+        hdr = parse_mkimg_header(img_bytes, hdr_ofs)
+        assert hdr is not None, f"Could not parse mkimg header at 0x{hdr_ofs:06X} for atf"
+        assert hdr.magic == MKIMG_MAGIC, f"Invalid mkimg magic at 0x{hdr_ofs:06X} for atf"
+        assert hdr.payload_size == atf_sub["size_bytes"], "mkimg size mismatch for atf"
+        print(f"      [        atf] Header @ 0x{hdr_ofs:06X} -> Payload: 0x{hdr.payload_offset:06X}..0x{hdr.payload_offset+hdr.payload_size:06X} ({hdr.payload_size:,} bytes)")
+
+        # Verify VBAR_EL3 instruction in ATF entry
+        atf_bin = img_bytes[hdr.payload_offset : hdr.payload_offset + hdr.payload_size]
+        atf_base = int(atf_sub["load_addr"], 16)
+        if "vbar_el3" in data.get("symbols", {}).get("atf", {}):
+            expected_vbar = int(data["symbols"]["atf"]["vbar_el3"]["addr"], 16)
+            insn_w = struct.unpack_from("<I", atf_bin, 0x10)[0]
+            immlo = (insn_w >> 29) & 0x3
+            immhi = (insn_w >> 5) & 0x7FFFF
+            imm = (immhi << 2) | immlo
+            if imm & (1 << 20):
+                imm -= (1 << 21)
+            actual_vbar = atf_base + 0x10 + imm
+            assert actual_vbar == expected_vbar, f"VBAR_EL3 mismatch: actual=0x{actual_vbar:X}, expected=0x{expected_vbar:X}"
+            print(f"      [   vbar_el3] Validated Secure EL3 vector table: 0x{actual_vbar:016X}")
+
+        # Verify MTK_SIP_KERNEL_BOOT in SiP table
+        sip_target = struct.pack("<II", 0x82000115, 0xC2000115)
+        assert sip_target in atf_bin, "MTK_SIP_KERNEL_BOOT FIDs not found in ATF payload"
+        print("      [sip_service] Validated MTK_SIP_KERNEL_BOOT (0xC2000115 / 0x82000115) in ATF payload")
+
+    print("    -> All TEE binary assertions verified successfully.")
+
+def verify_preloader_binary(data, pl_img_path):
+    print(f"\n[*] Auditing stock Preloader firmware binary: {pl_img_path}")
+    with open(pl_img_path, "rb") as f:
+        img_bytes = f.read()
+
+    sha256 = hashlib.sha256(img_bytes).hexdigest()
+    print(f"    Container size: {len(img_bytes):,} bytes")
+    print(f"    Container SHA256: {sha256}")
+    if "stock_preloader_sha256" in data:
+        assert sha256.lower() == data["stock_preloader_sha256"].lower(), (
+            f"Preloader SHA256 mismatch! Expected {data['stock_preloader_sha256']}, got {sha256}"
+        )
+
+    # Check preloader subpartition and GFH header
+    if "preloader" in data.get("subpartitions", {}):
+        pl_sub = data["subpartitions"]["preloader"]
+        hdr_ofs = int(pl_sub.get("header_offset", "0x001000"), 16)
+        gfh = parse_gfh_header(img_bytes, hdr_ofs)
+        assert gfh is not None, f"Could not parse GFH header at 0x{hdr_ofs:06X} for preloader"
+        assert gfh.magic == GFH_MAGIC, f"Invalid GFH magic at 0x{hdr_ofs:06X} for preloader"
+        assert gfh.load_addr == 0x00200F10, f"Unexpected GFH load_addr: 0x{gfh.load_addr:08X}"
+        assert gfh.jump_offset == 0xF0, f"Unexpected GFH jump_offset: 0x{gfh.jump_offset:X}"
+
+        entry_va = gfh.load_addr + gfh.jump_offset
+        expected_entry = int(pl_sub["load_addr"], 16)
+        assert entry_va == expected_entry, f"Preloader entry VA mismatch: 0x{entry_va:08X} vs 0x{expected_entry:08X}"
+        print(f"      [     gfh_hdr] Header @ 0x{hdr_ofs:06X} -> Load Addr: 0x{gfh.load_addr:08X}, Entry: 0x{entry_va:08X}")
+
+        # Check payload offset and size
+        payload_ofs = hdr_ofs + gfh.hdr_size
+        expected_payload_ofs = int(pl_sub["payload_offset"], 16)
+        assert payload_ofs == expected_payload_ofs, f"Payload offset mismatch: 0x{payload_ofs:X} vs 0x{expected_payload_ofs:X}"
+
+        payload_size = gfh.total_size - gfh.hdr_size - gfh.sig_size
+        expected_payload_size = int(pl_sub["payload_size"], 16)
+        assert payload_size == expected_payload_size, f"Payload size mismatch: 0x{payload_size:X} vs 0x{expected_payload_size:X}"
+        print(f"      [   pl_binary] Payload: 0x{payload_ofs:06X}..0x{payload_ofs+payload_size:06X} ({payload_size:,} bytes)")
+
+        # Verify entry branch instruction: 0x10F4 has 'b #0x201020' (0xEA000005)
+        branch_insn = struct.unpack_from("<I", img_bytes, payload_ofs + 4)[0]
+        assert branch_insn == 0xEA000005, f"Expected entry branch 0xEA000005 at 0x{payload_ofs+4:06X}, got 0x{branch_insn:08X}"
+        print("      [entry_branch] Validated AArch32 entry branch (b #0x201020) at entry+4")
+
+        # Verify trailing unallocated zero region
+        total_used = hdr_ofs + gfh.total_size
+        trailing_free = len(img_bytes) - total_used
+        if trailing_free > 0:
+            assert img_bytes[total_used:] == b"\x00" * trailing_free, "Preloader trailing flash space contains non-zero data!"
+            print(f"      [ flash_zeros] Validated {trailing_free:,} bytes (~{trailing_free/1024/1024:.2f} MiB) trailing unallocated flash space (100% 0x00)")
+
+    print("    -> All Preloader binary assertions verified successfully.")
+
 def main():
     print("=" * 64)
     print(" Loki Stock Symbol & Architecture Consistency Verifier")
@@ -259,6 +395,8 @@ def main():
         sys.exit(1)
 
     target_fw = locate_firmware_image(sys.argv[1] if len(sys.argv) > 1 else None, REPO_ROOT)
+    target_tee = locate_tee_image(None, REPO_ROOT)
+    target_pl = locate_preloader_image(None, REPO_ROOT)
 
     for json_path in device_files:
         data = verify_device(json_path)
@@ -268,6 +406,12 @@ def main():
         else:
             print("\n[*] Notice: No firmware image provided; skipping binary assertions.")
             print("    Set LOKI_FIRMWARE_IMG=<path/to/lk.img> to run binary audits.")
+
+        if target_tee:
+            verify_tee_binary(data, target_tee)
+
+        if target_pl:
+            verify_preloader_binary(data, target_pl)
 
     print("\n[+] ALL DEVICE CONSISTENCY & REVERSE-ENGINEERING CHECKS PASSED.")
 

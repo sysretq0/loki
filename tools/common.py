@@ -18,12 +18,52 @@ MKIMG_MAGIC = 0x58881688
 MKIMG_HDR_SIZE = 512
 DEFAULT_CONTAINER_SIZE = 0x400000  # 4 MiB flash partition
 
-# Standard Load Addresses (MediaTek AArch64)
+# Standard Load Addresses (MediaTek AArch64 / AArch32)
 DEFAULT_LOAD_VIRT = {
     "lk": 0xFFFF000050F00000,
     "bl2_ext": 0xFFFF000062F00000,
     "aee": 0xFFFF000063F00000,
+    "atf": 0x0000000048200000,
+    "tee": 0x0000000070000000,
+    "preloader": 0x0000000000201000,
 }
+
+# MediaTek Preloader GFH Constants
+GFH_MAGIC = 0x014D4D4D  # "MMM\x01"
+GFH_HDR_SIZE = 0xF0     # 240 bytes standard GFH block
+
+GfhFileInfo = namedtuple(
+    "GfhFileInfo",
+    ["offset", "magic", "file_type", "flash_dev", "sig_type", "load_addr", "total_size", "hdr_size", "sig_size", "jump_offset"]
+)
+
+def parse_gfh_header(buffer: bytes, offset: int = 0x1000) -> Optional[GfhFileInfo]:
+    """
+    Parses a MediaTek GFH (General File Header) block at the given offset (default: 0x1000).
+    Returns GfhFileInfo namedtuple or None if invalid.
+    """
+    if offset + 56 > len(buffer):
+        return None
+
+    magic, sec_size, sec_type = struct.unpack_from("<IHH", buffer, offset)
+    if magic != GFH_MAGIC or sec_type != 0:
+        return None
+
+    f_type, flash_dev, sig_type = struct.unpack_from("<HBB", buffer, offset + 24)
+    load_addr, total_size, max_size, hdr_size, sig_size, jump_offset = struct.unpack_from("<IIIIII", buffer, offset + 28)
+
+    return GfhFileInfo(
+        offset=offset,
+        magic=magic,
+        file_type=f_type,
+        flash_dev=flash_dev,
+        sig_type=sig_type,
+        load_addr=load_addr,
+        total_size=total_size,
+        hdr_size=hdr_size,
+        sig_size=sig_size,
+        jump_offset=jump_offset
+    )
 
 # Subpartition Header Structure
 MkImgHeader = namedtuple(
@@ -114,6 +154,74 @@ def locate_firmware_image(arg: Optional[str] = None, repo_root: Optional[str] = 
     candidates = [
         os.path.join(repo_root, "firmware", "lk.img"),
         "/work/firmware/advan_x1/lk.img",
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return os.path.abspath(c)
+
+    return None
+
+def locate_tee_image(arg: Optional[str] = None, repo_root: Optional[str] = None) -> Optional[str]:
+    """
+    Resolves the stock tee.img container path across:
+    1. CLI argument override
+    2. LOKI_TEE_IMG environment variable
+    3. Sibling of firmware image or common directories
+    """
+    if arg:
+        if os.path.exists(arg):
+            return os.path.abspath(arg)
+        print(f"[!] Warning: Specified TEE image '{arg}' not found.")
+        return None
+
+    env_tee = os.environ.get("LOKI_TEE_IMG")
+    if env_tee:
+        if os.path.exists(env_tee):
+            return os.path.abspath(env_tee)
+        print(f"[!] Warning: LOKI_TEE_IMG='{env_tee}' not found.")
+        return None
+
+    if repo_root is None:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    candidates = [
+        os.path.join(repo_root, "firmware", "tee.img"),
+        "/work/firmware/advan_x1/tee.img",
+        "/work/firmware/advan_x1_v4/tee.img",
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return os.path.abspath(c)
+
+    return None
+
+def locate_preloader_image(arg: Optional[str] = None, repo_root: Optional[str] = None) -> Optional[str]:
+    """
+    Resolves the stock preloader image path across:
+    1. CLI argument override
+    2. LOKI_PRELOADER_IMG environment variable
+    3. Common repository / system firmware directories
+    """
+    if arg:
+        if os.path.exists(arg):
+            return os.path.abspath(arg)
+        print(f"[!] Warning: Specified preloader '{arg}' not found.")
+        return None
+
+    env_pl = os.environ.get("LOKI_PRELOADER_IMG")
+    if env_pl:
+        if os.path.exists(env_pl):
+            return os.path.abspath(env_pl)
+        print(f"[!] Warning: LOKI_PRELOADER_IMG='{env_pl}' not found.")
+        return None
+
+    if repo_root is None:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    candidates = [
+        os.path.join(repo_root, "firmware", "preloader.img"),
+        "/work/firmware/advan_x1/preloader.img",
+        "/work/firmware/advan_x1_v4/preloader_k6789v1_64.bin",
     ]
     for c in candidates:
         if os.path.exists(c):

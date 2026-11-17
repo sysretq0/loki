@@ -19,7 +19,12 @@
     "arch": { "type": "string", "enum": ["aarch64", "arm"] },
     "firmware_version": { "type": "string" },
     "stock_lk_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "stock_tee_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "stock_tee_a_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "stock_tee_b_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "stock_preloader_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "container_size": { "type": "integer" },
+    "tee_partitions": { "type": "object" },
     "subpartitions": {
       "type": "object",
       "required": ["lk", "bl2_ext", "aee", "dtb"],
@@ -85,6 +90,55 @@
             "payload_size": { "type": "string" },
             "container_span": { "type": "string" }
           }
+        },
+        "atf": {
+          "type": "object",
+          "required": ["offset", "size", "load_addr", "el"],
+          "properties": {
+            "name": { "type": "string" },
+            "offset": { "type": "string" },
+            "size": { "type": "string" },
+            "size_bytes": { "type": "integer" },
+            "header_offset": { "type": "string" },
+            "payload_offset": { "type": "string" },
+            "payload_size": { "type": "string" },
+            "container_span": { "type": "string" },
+            "load_addr": { "type": "string" },
+            "el": { "type": "integer", "enum": [3] }
+          }
+        },
+        "tee": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "offset": { "type": "string" },
+            "size": { "type": "string" },
+            "size_bytes": { "type": "integer" },
+            "header_offset": { "type": "string" },
+            "payload_offset": { "type": "string" },
+            "payload_size": { "type": "string" },
+            "container_span": { "type": "string" },
+            "load_addr": { "type": "string" },
+            "el": { "type": "integer", "enum": [1] }
+          }
+        },
+        "preloader": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "offset": { "type": "string" },
+            "size": { "type": "string" },
+            "size_bytes": { "type": "integer" },
+            "header_offset": { "type": "string" },
+            "payload_offset": { "type": "string" },
+            "payload_size": { "type": "string" },
+            "sig_offset": { "type": "string" },
+            "sig_size": { "type": "string" },
+            "container_span": { "type": "string" },
+            "load_addr": { "type": "string" },
+            "el": { "type": "integer", "enum": [3] },
+            "arch": { "type": "string", "enum": ["arm"] }
+          }
         }
       }
     },
@@ -103,6 +157,14 @@
         "aee": {
           "type": "object",
           "description": "Symbol virtual addresses in AEE"
+        },
+        "atf": {
+          "type": "object",
+          "description": "Symbol virtual/physical addresses in ARM Trusted Firmware (BL31, EL3)"
+        },
+        "preloader": {
+          "type": "object",
+          "description": "Symbol virtual addresses in MediaTek Preloader (BL2, AArch32 SRAM)"
         }
       }
     },
@@ -113,6 +175,20 @@
     "keycodes": {
       "type": "object",
       "description": "Hardware keycode IDs detected by detect_key"
+    },
+    "smc_services": {
+      "type": "object",
+      "description": "Catalog of MediaTek SiP SMC services registered in ATF BL31",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["fid32", "fid64", "addr", "desc"],
+        "properties": {
+          "fid32": { "type": "string" },
+          "fid64": { "type": "string" },
+          "addr": { "type": "string" },
+          "desc": { "type": "string" }
+        }
+      }
     },
     "zero_regions": {
       "type": "object",

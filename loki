@@ -47,6 +47,36 @@ def cmd_scan_bl2(args):
     base = int(args.base, 16) if args.base else scan_bl2_ext.DEFAULT_BL2_EXT_LOAD_VIRT
     scan_bl2_ext.scan_bl2_ext(args.binary, base)
 
+def cmd_scan_atf(args):
+    try:
+        import scan_atf
+    except ImportError:
+        print("[!] Error: capstone is required for scanning. Run: pip install -r requirements.txt")
+        sys.exit(1)
+    target = args.binary or scan_atf.locate_tee_image()
+    if not target:
+        print("[*] Notice: No ATF binary or tee.img found.")
+        print("Usage: ./loki scan-atf <path/to/00_atf.bin|tee.img> [-b base_virtual_addr]")
+        print("  Or set LOKI_TEE_IMG=<path/to/tee.img>")
+        sys.exit(1)
+    base = int(args.base, 16) if args.base else scan_atf.DEFAULT_ATF_LOAD_VIRT
+    scan_atf.scan_atf(target, base)
+
+def cmd_scan_pl(args):
+    try:
+        import scan_preloader
+    except ImportError:
+        print("[!] Error: capstone is required for scanning. Run: pip install -r requirements.txt")
+        sys.exit(1)
+    target = args.binary or scan_preloader.locate_preloader_image()
+    if not target:
+        print("[*] Notice: No preloader binary or preloader.img found.")
+        print("Usage: ./loki scan-pl <path/to/preloader.img|preloader.bin> [-b base_virtual_addr]")
+        print("  Or set LOKI_PRELOADER_IMG=<path/to/preloader.img>")
+        sys.exit(1)
+    base = int(args.base, 16) if args.base else scan_preloader.DEFAULT_PL_LOAD_VIRT
+    scan_preloader.scan_preloader(target, base)
+
 def cmd_deadcode(args):
     try:
         import scan_deadcode
@@ -96,6 +126,9 @@ def cmd_gen_header(args):
             r2_path = os.path.join(REPO_ROOT, "tools", "radare2", "lk_map.r2")
         if not rz_path:
             rz_path = os.path.join(REPO_ROOT, "tools", "rizin", "lk_map.rz")
+        from gen_header import generate_atf_r2_script, generate_atf_rizin_script
+        generate_atf_r2_script(args.device, os.path.join(REPO_ROOT, "tools", "radare2", "atf_map.r2"))
+        generate_atf_rizin_script(args.device, os.path.join(REPO_ROOT, "tools", "rizin", "atf_map.rz"))
 
     if r2_path:
         generate_r2_script(args.device, r2_path)
@@ -168,6 +201,16 @@ def main():
     p_scan_bl2.add_argument("binary", help="Path to extracted 03_bl2_ext.bin")
     p_scan_bl2.add_argument("-b", "--base", help="Base virtual address (default: 0xFFFF000062F00000)")
 
+    # scan-atf
+    p_scan_atf = sub.add_parser("scan-atf", help="Scan raw ATF binary or tee.img for VBAR_EL3, PSCI, and SiP SMCs")
+    p_scan_atf.add_argument("binary", nargs="?", help="Path to extracted 00_atf.bin or tee.img")
+    p_scan_atf.add_argument("-b", "--base", help="Base address (default: 0x0000000048200000)")
+
+    # scan-pl
+    p_scan_pl = sub.add_parser("scan-pl", help="Scan raw Preloader binary or preloader.img for GFH, entry, and USBDL loop")
+    p_scan_pl.add_argument("binary", nargs="?", help="Path to preloader.img or preloader.bin")
+    p_scan_pl.add_argument("-b", "--base", help="Base address (default: 0x0000000000201000)")
+
     # deadcode
     p_dc = sub.add_parser("deadcode", help="Scan hardware strapping selectors and dead code caves")
     p_dc.add_argument("binary", nargs="?", help="Path to 00_lk.bin or lk.img")
@@ -209,6 +252,8 @@ def main():
         "unpack": cmd_unpack,
         "scan": cmd_scan,
         "scan-bl2": cmd_scan_bl2,
+        "scan-atf": cmd_scan_atf,
+        "scan-pl": cmd_scan_pl,
         "deadcode": cmd_deadcode,
         "verify": cmd_verify,
         "gen-header": cmd_gen_header,

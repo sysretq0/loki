@@ -1,16 +1,16 @@
 # loki
 
-> **MediaTek Little Kernel (LK), BL2_EXT & AEE Reverse-Engineering & Symbol Map Database**
+> **MediaTek Little Kernel (LK), BL2_EXT, ARM Trusted Firmware (ATF BL31) & AEE Reverse-Engineering & Symbol Map Database**
 
-`loki` is an open-source reverse-engineering framework and symbol database for MediaTek bootchains. It maps partition layouts, execution levels, and stock function addresses across the entire composite `lk.img` container (`lk`, `bl2_ext`, `aee`, `dtb`), providing discovery tools and recipes across **PyGhidra**, **Radare2**, **Rizin**, and **Capstone**.
+`loki` is an open-source reverse-engineering framework and symbol database for MediaTek bootchains. It maps partition layouts, execution levels, and stock function addresses across composite containers (`lk.img`, `tee.img`), providing discovery tools and recipes across **PyGhidra**, **Radare2**, **Rizin**, and **Capstone**.
 
 ---
 
 ## 1. Supported SoCs & Device Mappings
 
-| SoC | Device | Baseline | Container SHA-256 | Mapping File |
-|---|---|---|---|---|
-| **MediaTek MT6789** (Helio G99 / MT8781) | ADVAN X1 | `v5` (Retail) | `a11516b640cfdadfc616dcca9db0160ad72dd473a035830b08ed5802883ae834` | [`devices/mt6789/advan_x1_v5.json`](devices/mt6789/advan_x1_v5.json) |
+| SoC | Device | Baseline | Container SHA-256 (lk.img) | TEE SHA-256 (tee.img) | Preloader SHA-256 (preloader.img) | Mapping File |
+|---|---|---|---|---|---|---|
+| **MediaTek MT6789** (Helio G99 / MT8781) | ADVAN X1 | `v5` (Retail) | `a11516b640cfdadfc616dcca9db0160ad72dd473a035830b08ed5802883ae834` | `0a961a9940f01090005bf5ce1cd33d58c835f8d0925ba28bd187b114c582db44` | `f1cedb6912be99cbedc2fc49b0033e6067dda08fc836b2d3900e634e71b35d50` | [`devices/mt6789/advan_x1_v5.json`](devices/mt6789/advan_x1_v5.json) |
 
 ---
 
@@ -43,6 +43,8 @@ make verify FW=/path/to/stock/lk.img
 | `unpack` | Extract raw subpartitions from composite `lk.img` | `./loki unpack /path/to/lk.img extracted/` |
 | `scan` | Scan raw `lk.bin` for MMU, SMC, and anchor points | `./loki scan extracted/00_lk.bin` |
 | `scan-bl2` | Scan `bl2_ext.bin` for SPSR drops & memory pools | `./loki scan-bl2 extracted/03_bl2_ext.bin` |
+| `scan-atf` | Scan `atf.bin` or `tee.img` for VBAR_EL3, PSCI & SiP SMCs | `./loki scan-atf /path/to/tee.img` |
+| `scan-pl` | Scan `preloader.img` for GFH, entry & USBDL loop | `./loki scan-pl /path/to/preloader.img` |
 | `deadcode` | Scan hardware strapping & dead-code caves | `./loki deadcode extracted/00_lk.bin` |
 | `verify` | Validate schemas, C headers, and binary assertions | `./loki verify [device.json] [-f lk.img]` |
 | `gen-header` | Auto-generate C header (`.h`) from device `.json` | `./loki gen-header devices/mt6789/advan_x1_v5.json` |
@@ -82,6 +84,53 @@ The MediaTek `lk` partition (4 MiB) is an `mkimg` multi-image container containi
 | 0x20B3A6..0x400000| [Unallocated]  | 2,051,162 B  | Trailing Free     | Pure 0x00 Space      | Unallocated (1.96M)|
 +-------------------+----------------+--------------+-------------------+----------------------+--------------------+
 ```
+
+### 3.1 TEE Partition Architecture (`tee.img`)
+
+The MediaTek `tee` partition contains ARM Trusted Firmware (BL31) and the Secure OS (BL32 / Trustonic Kinibi), packaged with standard `mkimg` headers (`magic: 0x58881688`):
+
+```
++-----------------------------------------------------------------------------------------------------------------------+
+|                                        COMPOSITE tee.img PARTITION (6 MiB Flash)                                      |
++-------------------+----------------+--------------+-------------------+----------------------+--------------------+
+| Container Offset  | Sub-Image Name | Payload Size | Component Type    | Domain / Privilege   | Load Address (Phys)|
++-------------------+----------------+--------------+-------------------+----------------------+--------------------+
+| 0x000000..0x000200| atf (header)   | 512 B        | MTK mkimg Header  | Container Metadata   | N/A                |
+| 0x000200..0x030758| atf (payload)  | 197,976 B    | TF-A v2.4 (BL31)  | Secure Monitor / EL3 | 0x0000000048200000 |
+| 0x030760..0x0315F0| cert1 + cert2  | 3,728 B      | Headers + ASN.1   | DER Signature Blobs  | N/A                |
+| 0x0315F0..0x0317F0| tee (header)   | 512 B        | MTK mkimg Header  | Container Metadata   | N/A                |
+| 0x0317F0..0x0BABF0| tee (payload)  | 562,176 B    | Kinibi (<t-base)  | Secure OS (BL32)/EL1 | 0x0000000070000000 |
+| 0x0BABF0..0x0BB878| cert1 + cert2  | 3,728 B      | Headers + ASN.1   | DER Signature Blobs  | N/A                |
+| 0x0BB878..0x600000| [Unallocated]  | 5,522,826 B  | Trailing Free     | Pure 0x00 Space      | Unallocated (5.27M)|
++-------------------+----------------+--------------+-------------------+----------------------+--------------------+
+```
+
+> [!NOTE] Slot Partition Geometry Asymmetry
+> On the MT6789 retail UFS partition table (ADVAN X1), the TEE partition sizes differ between A/B slots:
+> - **Slot `_b` (`tee_b`)**: **6 MiB** (`0x600000` / 6,291,456 B) $\rightarrow$ trailing unallocated space: `5,522,826 B` (**~5.27 MiB**)
+> - **Slot `_a` (`tee_a`)**: **5 MiB** (`0x500000` / 5,242,880 B) $\rightarrow$ trailing unallocated space: `4,474,250 B` (**~4.27 MiB**, exactly **1 MiB less**)
+> Any custom payload or intermediate chainloader staged into trailing TEE partition space must fit within the strict 5 MiB bound (`0x500000`) if deployed to slot `_a`.
+
+### 3.2 Preloader Boot Partition Architecture (`preloader.img` / UFS Boot LUNs `sda` & `sdb`)
+
+The MediaTek Preloader executes in internal SRAM (`0x00201000`) at AArch32 Secure EL3. On UFS devices, it is flashed to the hardware boot LUNs (`/dev/block/sda` and `/dev/block/sdb`, 4 MiB each) packaged inside a `COMBO_BOOT` wrapper and GFH (General File Header):
+
+```
++-----------------------------------------------------------------------------------------------------------------------+
+|                                    PRELOADER BOOT LUN PARTITION (4 MiB Flash / sda & sdb)                             |
++-------------------+----------------+--------------+-------------------+----------------------+--------------------+
+| Container Offset  | Sub-Image Name | Payload Size | Component Type    | Domain / Privilege   | Load Address (SRAM)|
++-------------------+----------------+--------------+-------------------+----------------------+--------------------+
+| 0x000000..0x001000| COMBO_BOOT pad | 4,096 B      | MTK Wrapper Pad   | Container Header     | N/A                |
+| 0x001000..0x0010F0| GFH Header     | 240 B        | MTK FILE_INFO     | GFH Metadata (0xF0)  | N/A                |
+| 0x0010F0..0x059900| preloader bin  | 362,512 B    | Preloader Core    | BL2 / Secure EL3 SVC | 0x00201000 (A32)   |
+| 0x059900..0x059F6C| signature      | 1,644 B      | MTK Sig Block     | RSA-2048 / SHA-256   | N/A                |
+| 0x059F6C..0x400000| [Unallocated]  | 3,825,812 B  | Trailing Free     | Pure 0x00 Space      | Unallocated (3.65M)|
++-------------------+----------------+--------------+-------------------+----------------------+--------------------+
+```
+
+> [!NOTE] Internal SRAM Execution & Entry
+> The GFH header declares `load_addr = 0x00200F10` and `jump_offset = 0xF0`. The execution base in internal SRAM is exactly `0x00200F10 + 0xF0 = 0x00201000`. The entry code zeroes `r0` through `lr`, queries `MIDR` for Cortex-A55 (`0xD03`/`0xD04`), sets SVC mode (`0xD3`), initializes clocks/PMIC/EMI, and handles the USB download protocol before loading BL2_EXT/ATF.
 
 ---
 
@@ -134,8 +183,12 @@ The MediaTek `lk` partition (4 MiB) is an `mkimg` multi-image container containi
 | **Container Unpacking** | `./loki unpack <img\>` | — | `python3 tools/unpack.py` |
 | **LK Symbol Scanning** | `./loki scan <bin\>` | — | `python3 tools/capstone/scan_lk.py` |
 | **BL2_EXT Scanning** | `./loki scan-bl2 <bin\>` | — | `python3 tools/capstone/scan_bl2_ext.py` |
+| **ATF / BL31 Scanning** | `./loki scan-atf <img\>` | `make scan-atf` | `python3 tools/capstone/scan_atf.py` |
+| **Preloader Scanning** | `./loki scan-pl <img\>` | `make scan-pl` | `python3 tools/capstone/scan_preloader.py` |
 | **Interactive RE (r2)** | — | — | `r2 -i tools/radare2/lk_map.r2 extracted/00_lk.bin` |
+| **Preloader RE (r2)** | — | — | `r2 -i tools/radare2/pl_map.r2 -B 0x00201000 extracted/00_preloader.bin` |
 | **Interactive RE (rizin)** | — | — | `rizin -i tools/rizin/lk_map.rz extracted/00_lk.bin` |
+| **Preloader RE (rizin)** | — | — | `rizin -i tools/rizin/pl_map.rz -m 0x00201000 extracted/00_preloader.bin` |
 | **Headless Decompilation** | — | — | `python3 tools/pyghidra/analyze_lk.py extracted/00_lk.bin` |
 
 ---
