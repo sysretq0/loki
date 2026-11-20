@@ -21,6 +21,7 @@ DEFAULT_CONTAINER_SIZE = 0x400000  # 4 MiB flash partition
 # Standard Load Addresses (MediaTek AArch64 / AArch32)
 DEFAULT_LOAD_VIRT = {
     "lk": 0xFFFF000050F00000,
+    "lk_aarch32": 0x4C400000,
     "bl2_ext": 0xFFFF000062F00000,
     "aee": 0xFFFF000063F00000,
     "atf": 0x0000000048200000,
@@ -405,3 +406,67 @@ def decode_aarch64_branch_target(ins_word: int, pc: int) -> int:
     if imm26 & 0x02000000:
         imm26 -= 0x04000000
     return pc + (imm26 << 2)
+
+def is_arm32_bl(ins_word: int) -> bool:
+    """
+    Checks if a 32-bit ARM instruction word is a Branch with Link (BL).
+    Condition field is bits [31:28], opcode bits [27:24] == 1011 (0xB).
+    """
+    return (ins_word & 0x0F000000) == 0x0B000000
+
+def is_arm32_b(ins_word: int) -> bool:
+    """
+    Checks if a 32-bit ARM instruction word is an unconditional/conditional Branch (B).
+    Condition field is bits [31:28], opcode bits [27:24] == 1010 (0xA).
+    """
+    return (ins_word & 0x0F000000) == 0x0A000000
+
+def decode_arm32_branch_target(ins_word: int, pc: int) -> int:
+    """
+    Decodes the 24-bit signed immediate from an ARM32 B or BL instruction
+    and returns the calculated absolute branch destination virtual address.
+    In ARM state, PC is address of instruction + 8.
+    """
+    imm24 = ins_word & 0x00FFFFFF
+    if imm24 & 0x00800000:
+        imm24 -= 0x01000000
+    return pc + 8 + (imm24 << 2)
+
+def is_thumb_bl(w1: int, w2: int) -> bool:
+    """
+    Checks if a 32-bit Thumb-2 instruction pair is BL or BLX.
+    w1: bits [15:11] == 11110 (0xF000..0xF7FF)
+    w2: bits [15:14] == 11, bit 12 == 1 (0xD000..0xFFFF)
+    """
+    return (w1 & 0xF800) == 0xF000 and (w2 & 0xD000) == 0xD000
+
+def decode_thumb_branch_target(w1: int, w2: int, pc: int) -> int:
+    """
+    Decodes 32-bit Thumb-2 BL/BLX branch destination virtual address.
+    In Thumb state, PC is address of instruction + 4.
+    """
+    s = (w1 >> 10) & 1
+    imm10 = w1 & 0x3FF
+    j1 = (w2 >> 13) & 1
+    j2 = (w2 >> 11) & 1
+    imm11 = w2 & 0x7FF
+    i1 = ~(j1 ^ s) & 1
+    i2 = ~(j2 ^ s) & 1
+    imm32 = (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm11 << 1)
+    if s:
+        imm32 -= (1 << 25)
+    return pc + 4 + imm32
+
+def detect_binary_arch(buffer: bytes) -> str:
+    """
+    Heuristically determines whether raw LK binary is AArch32 or AArch64.
+    Checks vector table format and entry instructions.
+    """
+    if len(buffer) >= 8:
+        # AArch32 standard vector: 'b 0x24' -> 0xEA000007 (\x07\x00\x00\xea)
+        # or first word starts with 0xEA (ARM32 unconditional branch)
+        first_word = struct.unpack_from("<I", buffer, 0)[0]
+        if (first_word & 0xFF000000) == 0xEA000000:
+            return "aarch32"
+    return "aarch64"
+

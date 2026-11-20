@@ -1,0 +1,280 @@
+{
+  "device": "Infinix Hot 10S (X689B)",
+  "manufacturer": "Infinix",
+  "soc": "MT6768 (Helio G85)",
+  "arch": "aarch32",
+  "firmware_version": "v1",
+  "stock_lk_sha256": "65c6e90df83a1d1e02594cde28e3f9eadfac9cf6af6552e160823fffc0a3a035",
+  "stock_tee_sha256": "bccead0a84765d99a831d9579dfa469cb6dbbe82fb8fe8def20c6b262e63e70f",
+  "stock_preloader_sha256": "2d40c2a81a5076b7c31e48892759cf4f06b76d5db1674e2d652b1b53b0a686f1",
+  "stock_dtbo_sha256": "be21e6da7aa3e27a50eb1ea4ac87cd98336ec36fc319ec3582f2cfe43fa1b1cc",
+  "stock_base_dtb_sha256": "c28986fc5172744da2a0a0ddd7f943ac3ee45eeef32cf52c06f6f9183e1963df",
+  "container_size": 1124048,
+  "subpartitions": {
+    "lk": {
+      "name": "lk",
+      "offset": "0x000000",
+      "size": "0x0F2BD8",
+      "size_bytes": 994264,
+      "header_offset": "0x000000",
+      "payload_offset": "0x000200",
+      "payload_size": "0x0F2BD8",
+      "load_addr": "0x4C400000",
+      "el": 1
+    },
+    "dtb": {
+      "name": "lk_main_dtb",
+      "offset": "0x0F3C50",
+      "size": "0x01DA0A",
+      "size_bytes": 121354,
+      "header_offset": "0x0F3C50",
+      "payload_offset": "0x0F3E50",
+      "payload_size": "0x01DA0A",
+      "load_addr": "DRAM staging",
+      "el": null
+    }
+  },
+  "symbols": {
+    "lk": {
+      "_start": {
+        "addr": "0x4C400000",
+        "desc": "Stock LK entry point; enables MMU and sets up initial stacks"
+      },
+      "entry_relocated": {
+        "addr": "0x4C400080",
+        "desc": "Post-relocation entry point in DRAM"
+      },
+      "stack_svc": {
+        "addr": "0x4C4F5000",
+        "desc": "Initial Supervisor mode stack pointer"
+      },
+      "stack_irq": {
+        "addr": "0x4C4F65AC",
+        "desc": "Initial IRQ mode stack pointer"
+      },
+      "data_start": {
+        "addr": "0x4C4A4534",
+        "desc": "Start of initialized data segment"
+      },
+      "data_end": {
+        "addr": "0x4C4F2BD8",
+        "desc": "End of initialized data segment"
+      },
+      "bss_start": {
+        "addr": "0x4C4F2BD8",
+        "desc": "Start of uninitialized BSS segment"
+      },
+      "bss_end": {
+        "addr": "0x4C5A6814",
+        "desc": "End of uninitialized BSS segment"
+      },
+      "kmain": {
+        "addr": "0x4C421F44",
+        "desc": "LK kmain entry (Thumb-2)"
+      },
+      "platform_init": {
+        "addr": "0x4C402570",
+        "desc": "Platform early hardware initialization (clocks, uart, timer, wdt)"
+      },
+      "dprintf": {
+        "addr": "0x4C432FA4",
+        "desc": "LK debug printf formatting and console output"
+      },
+      "smc_call": {
+        "addr": "0x4C430230",
+        "desc": "ARM32/Thumb SMC call wrapper (smc #0) passing args via r0-r7"
+      },
+      "smc_boot_linux_trampoline": {
+        "addr": "0x4C430250",
+        "desc": "lk_jump64 / boot_linux handoff trampoline issuing MTK_SIP_KERNEL_BOOT (0x82000115)"
+      },
+      "wdt_set_timeout": {
+        "addr": "0x4C452710",
+        "desc": "mtk_wdt_set_timeout: configures TopRGU watchdog timeout length"
+      },
+      "wdt_pet": {
+        "addr": "0x4C45272C",
+        "desc": "mtk_wdt_restart: restarts the TopRGU watchdog timer by writing 0x1971 to 0x10007008"
+      }
+    }
+  },
+  "registers": {
+    "MT6768_WDT_BASE": "0x10007000",
+    "MT6768_WDT_MODE": "0x10007000",
+    "MT6768_WDT_LENGTH": "0x10007004",
+    "MT6768_WDT_RESTART": "0x10007008",
+    "MT6768_WDT_NONRST_REG2": "0x10007024",
+    "MT6768_UART0_BASE": "0x11002000",
+    "MT6768_GPIO_BASE": "0x10005000",
+    "MT6768_KEYPAD_BASE": "0x10010000",
+    "MT6768_GIC_DIST_BASE": "0x0C000000",
+    "MT6768_GIC_CPU_BASE": "0x0C400000"
+  },
+  "keycodes": {
+    "VOL_DOWN": 0,
+    "VOL_UP": 17,
+    "POWER": 8
+  },
+  "zero_regions": {
+    "lk": {
+      "ZERO_REGION_1": {
+        "file_offset": "0x0847A0",
+        "file_offset_end": "0x084E20",
+        "addr_start": "0x4C4847A0",
+        "addr_end": "0x4C484E20",
+        "size_bytes": 1664,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (1664 bytes pure 0x00)",
+        "recommended_hook_addr": "0x4C4847A4"
+      },
+      "ZERO_REGION_2": {
+        "file_offset": "0x08541C",
+        "file_offset_end": "0x0856A8",
+        "addr_start": "0x4C48541C",
+        "addr_end": "0x4C4856A8",
+        "size_bytes": 652,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (652 bytes pure 0x00)"
+      },
+      "ZERO_REGION_3": {
+        "file_offset": "0x087720",
+        "file_offset_end": "0x08784C",
+        "addr_start": "0x4C487720",
+        "addr_end": "0x4C48784C",
+        "size_bytes": 300,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (300 bytes pure 0x00)"
+      },
+      "ZERO_REGION_4": {
+        "file_offset": "0x087B24",
+        "file_offset_end": "0x087C4C",
+        "addr_start": "0x4C487B24",
+        "addr_end": "0x4C487C4C",
+        "size_bytes": 296,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (296 bytes pure 0x00)"
+      },
+      "ZERO_REGION_5": {
+        "file_offset": "0x087F24",
+        "file_offset_end": "0x08804C",
+        "addr_start": "0x4C487F24",
+        "addr_end": "0x4C48804C",
+        "size_bytes": 296,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (296 bytes pure 0x00)"
+      },
+      "ZERO_REGION_6": {
+        "file_offset": "0x088324",
+        "file_offset_end": "0x08844C",
+        "addr_start": "0x4C488324",
+        "addr_end": "0x4C48844C",
+        "size_bytes": 296,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (296 bytes pure 0x00)"
+      },
+      "ZERO_REGION_7": {
+        "file_offset": "0x088724",
+        "file_offset_end": "0x08884C",
+        "addr_start": "0x4C488724",
+        "addr_end": "0x4C48884C",
+        "size_bytes": 296,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (296 bytes pure 0x00)"
+      },
+      "ZERO_REGION_8": {
+        "file_offset": "0x088B24",
+        "file_offset_end": "0x088C4C",
+        "addr_start": "0x4C488B24",
+        "addr_end": "0x4C488C4C",
+        "size_bytes": 296,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (296 bytes pure 0x00)"
+      },
+      "ZERO_REGION_9": {
+        "file_offset": "0x088F24",
+        "file_offset_end": "0x08904C",
+        "addr_start": "0x4C488F24",
+        "addr_end": "0x4C48904C",
+        "size_bytes": 296,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (296 bytes pure 0x00)"
+      },
+      "ZERO_REGION_10": {
+        "file_offset": "0x089324",
+        "file_offset_end": "0x08944C",
+        "addr_start": "0x4C489324",
+        "addr_end": "0x4C48944C",
+        "size_bytes": 296,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (296 bytes pure 0x00)"
+      },
+      "ZERO_REGION_11": {
+        "file_offset": "0x089724",
+        "file_offset_end": "0x08984C",
+        "addr_start": "0x4C489724",
+        "addr_end": "0x4C48984C",
+        "size_bytes": 296,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (296 bytes pure 0x00)"
+      },
+      "ZERO_REGION_12": {
+        "file_offset": "0x089B24",
+        "file_offset_end": "0x089C4C",
+        "addr_start": "0x4C489B24",
+        "addr_end": "0x4C489C4C",
+        "size_bytes": 296,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (296 bytes pure 0x00)"
+      },
+      "ZERO_REGION_13": {
+        "file_offset": "0x089F24",
+        "file_offset_end": "0x08A04C",
+        "addr_start": "0x4C489F24",
+        "addr_end": "0x4C48A04C",
+        "size_bytes": 296,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (296 bytes pure 0x00)"
+      },
+      "ZERO_REGION_14": {
+        "file_offset": "0x08A320",
+        "file_offset_end": "0x08A44C",
+        "addr_start": "0x4C48A320",
+        "addr_end": "0x4C48A44C",
+        "size_bytes": 300,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (300 bytes pure 0x00)"
+      },
+      "ZERO_REGION_15": {
+        "file_offset": "0x08A724",
+        "file_offset_end": "0x08A84C",
+        "addr_start": "0x4C48A724",
+        "addr_end": "0x4C48A84C",
+        "size_bytes": 296,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (296 bytes pure 0x00)"
+      },
+      "ZERO_REGION_16": {
+        "file_offset": "0x08AB24",
+        "file_offset_end": "0x08AC4C",
+        "addr_start": "0x4C48AB24",
+        "addr_end": "0x4C48AC4C",
+        "size_bytes": 296,
+        "permissions": "RX",
+        "desc": "Linker alignment padding in .text segment (296 bytes pure 0x00)"
+      }
+    }
+  },
+  "unallocated_flash": {
+    "container_size_bytes": 1124048,
+    "used_bytes": 1124045,
+    "offset_start": "0x1126CD",
+    "offset_end": "0x1126D0",
+    "free_space_bytes": 3,
+    "free_space_mib": 0.0,
+    "desc": "Trailing unallocated flash partition space in lk.img filled with pure 0x00 bytes"
+  },
+  "hooks": {},
+  "dead_code": {
+    "lk": {}
+  }
+}

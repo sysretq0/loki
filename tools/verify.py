@@ -37,6 +37,10 @@ from common import (
     parse_gfh_header,
     decode_aarch64_branch_target,
     is_aarch64_bl,
+    is_thumb_bl,
+    decode_thumb_branch_target,
+    is_arm32_bl,
+    decode_arm32_branch_target,
     MKIMG_MAGIC,
     MKIMG_HDR_SIZE,
     GFH_MAGIC,
@@ -131,10 +135,10 @@ def verify_device(json_path):
                 if sym_key == "entry": sym_key = "_start"
                 if sym_key == "spsr_routine": sym_key = "spsr_drop_routine"
                 if sym_key == "atf_jump": sym_key = "atf_handoff_jump"
-                assert sym_key in data["symbols"]["bl2_ext"], f"Header define {def_name} not found in JSON symbols.bl2_ext"
+                assert "bl2_ext" in data.get("symbols", {}) and sym_key in data["symbols"]["bl2_ext"], f"Header define {def_name} not found in JSON symbols.bl2_ext"
             elif def_name.startswith("ADDR_AEE_"):
                 sym_key = def_name[len("ADDR_AEE_"):].lower()
-                assert sym_key in data["symbols"]["aee"], f"Header define {def_name} not found in JSON symbols.aee"
+                assert "aee" in data.get("symbols", {}) and sym_key in data["symbols"]["aee"], f"Header define {def_name} not found in JSON symbols.aee"
             elif def_name.startswith("ADDR_ATF_SMC_"):
                 svc_key = def_name[len("ADDR_ATF_SMC_"):]
                 assert svc_key in smc_svcs, f"Header define {def_name} not found in smc_services"
@@ -221,6 +225,8 @@ def verify_binary(data, lk_img_path):
     # 2. Check mkimg container headers and subpartition layout
     print("    Verifying mkimg container headers & partition math:")
     for sub_id in ["lk", "bl2_ext", "aee", "dtb"]:
+        if sub_id not in data.get("subpartitions", {}):
+            continue
         sub = data["subpartitions"][sub_id]
         hdr_ofs = int(sub.get("header_offset", sub["offset"]), 16)
         hdr = parse_mkimg_header(img_bytes, hdr_ofs)
@@ -272,6 +278,7 @@ def verify_binary(data, lk_img_path):
     # 6. Verify Stock Hook Entry Points & Branch Opcodes in Binary
     print("    Verifying stock hook sites in binary:")
     hooks = data.get("hooks", {})
+    is_32 = data.get("arch", "aarch64") in ("aarch32", "arm")
     for hook_name, hook_info in hooks.items():
         target_va = int(hook_info["target"], 16)
         # Only verify LK targets directly against lk_bin
@@ -279,26 +286,43 @@ def verify_binary(data, lk_img_path):
             target_ofs = target_va - base_virt
             if hook_info["type"] == "pointer_patch":
                 expected_entry = int(hook_info["stock_entry"], 16)
-                actual_ptr = struct.unpack_from("<Q", lk_bin, target_ofs)[0]
+                if is_32:
+                    actual_ptr = struct.unpack_from("<I", lk_bin, target_ofs)[0]
+                    fmt = "0x{:08X}"
+                else:
+                    actual_ptr = struct.unpack_from("<Q", lk_bin, target_ofs)[0]
+                    fmt = "0x{:016X}"
                 assert actual_ptr == expected_entry, (
-                    f"Stock entry mismatch for {hook_name} @ 0x{target_va:016X}: actual=0x{actual_ptr:016X}, expected=0x{expected_entry:016X}"
+                    f"Stock entry mismatch for {hook_name} @ {fmt.format(target_va)}: actual={fmt.format(actual_ptr)}, expected={fmt.format(expected_entry)}"
                 )
-                print(f"      [{hook_name}] Validated 64-bit pointer @ 0x{target_va:016X} -> 0x{actual_ptr:016X}")
+                print(f"      [{hook_name}] Validated pointer @ {fmt.format(target_va)} -> {fmt.format(actual_ptr)}")
                 if "stock_init" in hook_info:
                     expected_init = int(hook_info["stock_init"], 16)
-                    actual_init = struct.unpack_from("<Q", lk_bin, target_ofs - 8)[0]
+                    step = 4 if is_32 else 8
+                    actual_init = struct.unpack_from("<I" if is_32 else "<Q", lk_bin, target_ofs - step)[0]
                     assert actual_init == expected_init, (
-                        f"Stock init mismatch for {hook_name}: actual=0x{actual_init:016X}, expected=0x{expected_init:016X}"
+                        f"Stock init mismatch for {hook_name}: actual={fmt.format(actual_init)}, expected={fmt.format(expected_init)}"
                     )
             elif hook_info["type"] == "bl_opcode_patch":
                 expected_target = int(hook_info["stock_target"], 16)
-                ins_word = struct.unpack_from("<I", lk_bin, target_ofs)[0]
-                assert is_aarch64_bl(ins_word), f"Expected BL instruction at 0x{target_va:016X}"
-                branch_target = decode_aarch64_branch_target(ins_word, target_va)
+                if is_32:
+                    w1, w2 = struct.unpack_from("<HH", lk_bin, target_ofs)
+                    if is_thumb_bl(w1, w2):
+                        branch_target = decode_thumb_branch_target(w1, w2, target_va)
+                    else:
+                        word = struct.unpack_from("<I", lk_bin, target_ofs)[0]
+                        assert is_arm32_bl(word), f"Expected Thumb or ARM BL instruction at 0x{target_va:08X}"
+                        branch_target = decode_arm32_branch_target(word, target_va)
+                    fmt = "0x{:08X}"
+                else:
+                    ins_word = struct.unpack_from("<I", lk_bin, target_ofs)[0]
+                    assert is_aarch64_bl(ins_word), f"Expected BL instruction at 0x{target_va:016X}"
+                    branch_target = decode_aarch64_branch_target(ins_word, target_va)
+                    fmt = "0x{:016X}"
                 assert branch_target == expected_target, (
-                    f"BL branch target mismatch for {hook_name}: actual=0x{branch_target:016X}, expected=0x{expected_target:016X}"
+                    f"BL branch target mismatch for {hook_name}: actual={fmt.format(branch_target)}, expected={fmt.format(expected_target)}"
                 )
-                print(f"      [{hook_name}] Validated BL opcode @ 0x{target_va:016X} -> 0x{branch_target:016X}")
+                print(f"      [{hook_name}] Validated BL opcode @ {fmt.format(target_va)} -> {fmt.format(branch_target)}")
 
     print("    -> All binary assertions verified successfully.")
 

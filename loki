@@ -35,7 +35,7 @@ def cmd_scan(args):
     except ImportError:
         print("[!] Error: capstone is required for scanning. Run: pip install -r requirements.txt")
         sys.exit(1)
-    base = int(args.base, 16) if args.base else scan_lk.DEFAULT_LK_LOAD_VIRT
+    base = int(args.base, 16) if args.base else None
     scan_lk.scan_lk(args.binary, base)
 
 def cmd_scan_bl2(args):
@@ -167,10 +167,11 @@ def cmd_devices(args):
                         d = json.load(jf)
                     soc = d.get("soc", "Unknown SoC")
                     dev = d.get("device", f)
+                    arch = d.get("arch", "aarch64")
                     fw = d.get("firmware_version", "v1")
                     sha = d.get("stock_lk_sha256", "N/A")[:16] + "..."
                     rel = os.path.relpath(p, REPO_ROOT)
-                    print(f"  * {dev:<20} | SoC: {soc:<26} | Baseline: {fw:<4} | Profile: {rel}")
+                    print(f"  * {dev:<20} | SoC: {soc:<20} | Arch: {arch:<7} | Baseline: {fw:<4} | Profile: {rel}")
                     found += 1
                 except Exception:
                     pass

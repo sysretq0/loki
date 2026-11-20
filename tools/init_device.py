@@ -18,7 +18,7 @@ TOOLS_DIR = os.path.join(REPO_ROOT, "tools")
 sys.path.insert(0, TOOLS_DIR)
 
 from gen_header import generate_header
-from common import iter_mkimg_headers, DEFAULT_LOAD_VIRT, MKIMG_HDR_SIZE
+from common import iter_mkimg_headers, DEFAULT_LOAD_VIRT, MKIMG_HDR_SIZE, detect_binary_arch
 
 def scaffold_device(codename, soc, lk_img_path, out_dir=None):
     if not os.path.exists(lk_img_path):
@@ -71,13 +71,30 @@ def scaffold_device(codename, soc, lk_img_path, out_dir=None):
     lk_pay_ofs = int(subparts["lk"]["payload_offset"], 16)
     lk_pay_sz = subparts["lk"]["size_bytes"]
     lk_bin = img_bytes[lk_pay_ofs : lk_pay_ofs + lk_pay_sz]
-    lk_base = DEFAULT_LOAD_VIRT["lk"]
+
+    # Detect architecture
+    arch = detect_binary_arch(lk_bin)
+    is_32 = arch in ("aarch32", "arm")
+    addr_fmt = "0x{:08X}" if is_32 else "0x{:016X}"
+
+    if is_32:
+        lk_base = DEFAULT_LOAD_VIRT.get("lk_aarch32", 0x4C400000)
+        if len(lk_bin) >= 0x78:
+            cand = struct.unpack_from("<I", lk_bin, 0x74)[0]
+            if cand != 0 and (cand & 0xFFFFF) == 0:
+                lk_base = cand
+        subparts["lk"]["load_addr"] = addr_fmt.format(lk_base)
+        print(f"[+] Architecture: AArch32 (ARMv7-A/Thumb-2), Base Address: {addr_fmt.format(lk_base)}")
+    else:
+        lk_base = DEFAULT_LOAD_VIRT["lk"]
+        subparts["lk"]["load_addr"] = addr_fmt.format(lk_base)
+        print(f"[+] Architecture: AArch64 (ARMv8-A), Base Address: {addr_fmt.format(lk_base)}")
 
     # 2. Detect zero regions in LK
     zero_regions = {}
-    # Scan for long runs of zeros (> 1024 bytes) in LK .text
     cur_start = None
-    for i in range(0, min(len(lk_bin), 0x80000), 4):
+    scan_limit = min(len(lk_bin), 0xA0000 if is_32 else 0x80000)
+    for i in range(0, scan_limit, 4):
         w = struct.unpack_from("<I", lk_bin, i)[0]
         if w == 0:
             if cur_start is None:
@@ -85,19 +102,19 @@ def scaffold_device(codename, soc, lk_img_path, out_dir=None):
         else:
             if cur_start is not None:
                 run_len = i - cur_start
-                if run_len >= 1024:
+                if run_len >= (256 if is_32 else 1024):
                     reg_id = f"ZERO_REGION_{len(zero_regions)+1}"
                     zero_regions[reg_id] = {
                         "file_offset": f"0x{cur_start:06X}",
                         "file_offset_end": f"0x{i:06X}",
-                        "addr_start": f"0x{lk_base + cur_start:016X}",
-                        "addr_end": f"0x{lk_base + i:016X}",
+                        "addr_start": addr_fmt.format(lk_base + cur_start),
+                        "addr_end": addr_fmt.format(lk_base + i),
                         "size_bytes": run_len,
                         "permissions": "RX",
                         "desc": f"Linker alignment padding in .text segment ({run_len} bytes pure 0x00)"
                     }
                     if len(zero_regions) == 1:
-                        zero_regions[reg_id]["recommended_hook_addr"] = f"0x{lk_base + cur_start + 8:016X}"
+                        zero_regions[reg_id]["recommended_hook_addr"] = addr_fmt.format(lk_base + cur_start + (4 if is_32 else 8))
                 cur_start = None
 
     print(f"\n[+] Detected {len(zero_regions)} zero-filled executable padding regions in .text:")
@@ -106,7 +123,6 @@ def scaffold_device(codename, soc, lk_img_path, out_dir=None):
 
     # 3. Detect trailing unallocated flash space
     last_subpart_end = 0
-    # Search backwards from container end for non-zero byte
     for i in range(len(img_bytes) - 1, -1, -1):
         if img_bytes[i] != 0:
             last_subpart_end = i + 1
@@ -131,35 +147,65 @@ def scaffold_device(codename, soc, lk_img_path, out_dir=None):
     out_json = os.path.join(out_dir, f"{codename}.json")
     out_h = os.path.join(out_dir, f"{codename}.h")
 
+    lk_symbols = {
+        "_start": {
+            "addr": addr_fmt.format(lk_base),
+            "desc": "Stock LK entry point; enables MMU and sets up initial stacks"
+        }
+    }
+
+    if is_32 and len(lk_bin) >= 0x138:
+        reloc_entry = struct.unpack_from("<I", lk_bin, 0x7C)[0]
+        sp_svc = struct.unpack_from("<I", lk_bin, 0x118)[0]
+        sp_irq = struct.unpack_from("<I", lk_bin, 0x11C)[0]
+        d_start = struct.unpack_from("<I", lk_bin, 0x120)[0]
+        d_end = struct.unpack_from("<I", lk_bin, 0x128)[0]
+        b_start = struct.unpack_from("<I", lk_bin, 0x12C)[0]
+        b_end = struct.unpack_from("<I", lk_bin, 0x130)[0]
+
+        lk_symbols["entry_relocated"] = {"addr": addr_fmt.format(reloc_entry), "desc": "Post-relocation entry point in DRAM"}
+        lk_symbols["stack_svc"] = {"addr": addr_fmt.format(sp_svc), "desc": "Initial Supervisor mode stack pointer"}
+        lk_symbols["stack_irq"] = {"addr": addr_fmt.format(sp_irq), "desc": "Initial IRQ mode stack pointer"}
+        lk_symbols["data_start"] = {"addr": addr_fmt.format(d_start), "desc": "Start of initialized data segment"}
+        lk_symbols["data_end"] = {"addr": addr_fmt.format(d_end), "desc": "End of initialized data segment"}
+        lk_symbols["bss_start"] = {"addr": addr_fmt.format(b_start), "desc": "Start of uninitialized BSS segment"}
+        lk_symbols["bss_end"] = {"addr": addr_fmt.format(b_end), "desc": "End of uninitialized BSS segment"}
+
+        blx_kmain = struct.unpack_from("<I", lk_bin, 0x110)[0]
+        if (blx_kmain & 0xFF000000) == 0xFA000000:
+            imm24 = blx_kmain & 0x00FFFFFF
+            h = (blx_kmain >> 24) & 1
+            if imm24 & 0x00800000:
+                imm24 -= 0x01000000
+            kmain_dest = (0x110 + 8 + (imm24 << 2) + (h << 1))
+            lk_symbols["kmain"] = {"addr": addr_fmt.format(lk_base + kmain_dest), "desc": "LK kmain entry (Thumb-2)"}
+
+    symbols = {"lk": lk_symbols}
+    if "bl2_ext" in subparts:
+        symbols["bl2_ext"] = {
+            "_start": {
+                "addr": f"0x{DEFAULT_LOAD_VIRT['bl2_ext']:016X}",
+                "desc": "BL2_EXT entry point in Secure EL3"
+            }
+        }
+    if "aee" in subparts:
+        symbols["aee"] = {
+            "kedump_init": {
+                "addr": f"0x{DEFAULT_LOAD_VIRT['aee'] + 0x1000:016X}",
+                "desc": "Initializes Exception Engine memory buffers"
+            }
+        }
+
     device_doc = {
         "device": codename.replace("_", " ").title(),
         "manufacturer": "OEM",
         "soc": soc.upper(),
-        "arch": "aarch64",
+        "arch": arch,
         "firmware_version": "v1",
         "stock_lk_sha256": full_sha,
         "container_size": len(img_bytes),
         "subpartitions": subparts,
-        "symbols": {
-            "lk": {
-                "_start": {
-                    "addr": f"0x{lk_base:016X}",
-                    "desc": "Stock LK entry point; enables MMU and sets up initial EL1 stack"
-                }
-            },
-            "bl2_ext": {
-                "_start": {
-                    "addr": f"0x{DEFAULT_LOAD_VIRT['bl2_ext']:016X}",
-                    "desc": "BL2_EXT entry point in Secure EL3"
-                }
-            },
-            "aee": {
-                "kedump_init": {
-                    "addr": f"0x{DEFAULT_LOAD_VIRT['aee'] + 0x1000:016X}",
-                    "desc": "Initializes Exception Engine memory buffers"
-                }
-            }
-        },
+        "symbols": symbols,
         "zero_regions": {"lk": zero_regions},
         "unallocated_flash": unallocated_flash,
         "hooks": {},

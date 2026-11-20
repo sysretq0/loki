@@ -16,7 +16,7 @@
     "device": { "type": "string" },
     "manufacturer": { "type": "string" },
     "soc": { "type": "string" },
-    "arch": { "type": "string", "enum": ["aarch64", "arm"] },
+    "arch": { "type": "string", "enum": ["aarch64", "arm", "aarch32"] },
     "firmware_version": { "type": "string" },
     "stock_lk_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "stock_tee_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
@@ -30,7 +30,7 @@
     "tee_partitions": { "type": "object" },
     "subpartitions": {
       "type": "object",
-      "required": ["lk", "bl2_ext", "aee", "dtb"],
+      "required": ["lk", "dtb"],
       "properties": {
         "lk": {
           "type": "object",
@@ -147,7 +147,7 @@
     },
     "symbols": {
       "type": "object",
-      "required": ["lk", "bl2_ext"],
+      "required": ["lk"],
       "properties": {
         "lk": {
           "type": "object",
