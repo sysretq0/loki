@@ -134,7 +134,7 @@
 
 ---
 
-## 5. Fastboot Engine (MTU3 USB Gadget)
+## 5. Fastboot Engine (MUSB USB Gadget)
 
 ### `fastboot_register`
 * **Address:** `0xFFFF000050F04C5C` (Offset: `0x004C5C`)

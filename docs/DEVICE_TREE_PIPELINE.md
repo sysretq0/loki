@@ -169,7 +169,7 @@ The following 31 physical memory blocks are dynamically generated and injected i
 | R[18] | `tee-secmem` | `0x07F600000` | `0x00800000` (8 MiB) | TEE Secure Memory Pool |
 | R[19] | `tee-tui` | `0x07E600000` | `0x01000000` (16 MiB) | Trusted User Interface Framebuffer |
 | R[20] | `BL31-reserved` | `0x048200000` | `0x00200000` (2 MiB) | ARM Trusted Firmware (TF-A BL31) Core |
-| R[21] | `framebuffer` | `0x0FE007000` | `0x01FF9000` (~32 MiB) | Hardware Scanout Buffer (`nt36672e` DSI) |
+| R[21] | `framebuffer` | `0x0FE007000` | `0x01FF9000` (~32 MiB) | Hardware Scanout Buffer (`icnl9922c` DSI, 1080×2460, stride 1088 px) |
 | R[22] | `mb_kernel` | `0x040000000` | `0x07C80000` (124.5 MiB)| Linux Kernel Decompressed Image Staging |
 | R[23] | `SCP-reserved` | `0x0BF800000` | `0x00600000` (6 MiB) | System Companion Processor Firmware |
 | R[24] | `SSPM-reserved` | `0x09FE80000` | `0x00180000` (1.5 MiB) | Secure System Power Manager Firmware |

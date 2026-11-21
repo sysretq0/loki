@@ -489,26 +489,50 @@ def main():
     target_dtbo = locate_dtbo_image(None, REPO_ROOT)
     target_vb = locate_vendor_boot_image(None, REPO_ROOT)
 
-    for json_path in device_files:
+    def _file_sha256(path):
+        if not path or not os.path.isfile(path):
+            return None
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest().lower()
+
+    fw_sha = _file_sha256(target_fw)
+    tee_sha = _file_sha256(target_tee)
+    pl_sha = _file_sha256(target_pl)
+    dtbo_sha = _file_sha256(target_dtbo)
+    vb_sha = _file_sha256(target_vb)
+
+    fw_matched = False
+    for json_path in sorted(device_files):
         data = verify_device(json_path)
 
         if target_fw:
-            verify_binary(data, target_fw)
+            if fw_sha == data.get("stock_lk_sha256", "").lower():
+                verify_binary(data, target_fw)
+                fw_matched = True
+            else:
+                print(f"    -> Skipping lk.img audit (input SHA256 belongs to another device)")
         else:
             print("\n[*] Notice: No firmware image provided; skipping binary assertions.")
             print("    Set LOKI_FIRMWARE_IMG=<path/to/lk.img> to run binary audits.")
 
-        if target_tee:
+        if target_tee and tee_sha in (
+            data.get("stock_tee_sha256", "").lower(),
+            data.get("stock_tee_a_sha256", "").lower(),
+            data.get("stock_tee_b_sha256", "").lower(),
+        ):
             verify_tee_binary(data, target_tee)
 
-        if target_pl:
+        if target_pl and pl_sha == data.get("stock_preloader_sha256", "").lower():
             verify_preloader_binary(data, target_pl)
 
-        if target_dtbo:
+        if target_dtbo and dtbo_sha == data.get("stock_dtbo_sha256", "").lower():
             verify_dtbo_binary(data, target_dtbo)
 
-        if target_vb:
+        if target_vb and vb_sha == data.get("stock_vendor_boot_sha256", "").lower():
             verify_vendor_boot_binary(data, target_vb)
+
+    if target_fw and not fw_matched:
+        raise AssertionError(f"Provided lk.img ({fw_sha}) did not match any device profile in devices/!")
 
     print("\n[+] ALL DEVICE CONSISTENCY & REVERSE-ENGINEERING CHECKS PASSED.")
 

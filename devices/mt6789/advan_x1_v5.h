@@ -90,7 +90,9 @@
 #define ADDR_LK_BIO_READ                     0xFFFF000050F55E08ULL
 #define ADDR_LK_BIO_WRITE                    0xFFFF000050F55E78ULL
 #define ADDR_LK_GET_SUFFIX                   0xFFFF000050F14690ULL
+#define ADDR_LK_GET_CURRENT_SLOT             0xFFFF000050F14A80ULL
 #define ADDR_LK_SET_ACTIVE                   0xFFFF000050F14AD0ULL
+#define ADDR_LK_SET_BOOT_MODE                0xFFFF000050F46DDCULL
 #define ADDR_LK_KERNEL_DECOMPRESS            0xFFFF000050F0A994ULL
 #define ADDR_LK_CMDLINE_APPEND               0xFFFF000050F0F800ULL
 #define ADDR_LK_FDT_SETPROP                  0xFFFF000050F498E8ULL
@@ -343,9 +345,14 @@
 #define MT6789_WDT_RESTART           0x10007008ULL
 #define MT6789_WDT_NONRST_REG        0x10007020ULL
 #define MT6789_WDT_NONRST_REG2       0x10007024ULL
-#define MT6789_DEVAPC_BASE           0x1000EF00ULL
+#define MT6789_DEVAPC_BASE           0x1000E000ULL
+#define MT6789_DEVAPC_APC_CON        0x1000EF00ULL
+#define MT6789_KEYPAD_BASE           0x10010000ULL
+#define MT6789_PWRAP_BASE            0x10026000ULL
 #define MT6789_UART0_BASE            0x11002000ULL
+#define MT6789_USB0_BASE             0x11200000ULL
 #define MT6789_UFSHCI_BASE           0x11270000ULL
+#define MT6789_U2PHY0_BASE           0x11F40000ULL
 #define MT6789_MMSYS_BASE            0x14000000ULL
 #define MT6789_DISP_OVL0_BASE        0x14005000ULL
 #define FRAMEBUFFER_PHYS_0           0xFE007000ULL
@@ -354,7 +361,7 @@
 /* --- Hardware Keycode Mappings (detect_key) --- */
 #define KEY_VOL_DOWN                 1
 #define KEY_VOL_UP                   6
-#define KEY_POWER                    8
+#define KEY_POWER                    2
 
 /* --- Zero-Filled (.text) Executable Padding Regions (No Dead Code Reuse) --- */
 /* ZERO_REGION_1: Linker alignment padding before VBAR_EL1 vector table in .text segment */
@@ -376,7 +383,7 @@
 /* --- Container Flash Partition Free Space (lk.img) --- */
 #define UNALLOCATED_FLASH_OFFSET     0x20B3A6ULL
 #define UNALLOCATED_FLASH_SIZE       0x1F4C5AULL  /* 2,051,162 bytes */
-#define CONTAINER_TOTAL_SIZE         0x400000ULL  /* 4,194,304 bytes (4 MiB) */
+#define CONTAINER_TOTAL_SIZE         0x400000ULL  /* 4,194,304 bytes */
 
 /* --- TEE Container Partition Free Space (Slot A vs Slot B Geometry) --- */
 #define TEE_A_CONTAINER_SIZE_BYTES   5242880ULL  /* 5.0 MiB on sdc32 */

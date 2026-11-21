@@ -1,3 +1,6 @@
 [submodule "advan-x1-port"]
 	path = mainline
 	url = https://github.com/sysretq0/advan-x1-mainline
+[submodule "advan-x1-uboot"]
+	path = uboot
+	url = https://github.com/sysretq0/advan-x1-uboot

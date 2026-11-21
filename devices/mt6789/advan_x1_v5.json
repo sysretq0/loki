@@ -166,7 +166,7 @@
       },
       "detect_key": {
         "addr": "0xFFFF000050F5B940",
-        "desc": "Reads state of physical hardware keys (VolDown=1, VolUp=6, Power=2/8)",
+        "desc": "Reads state of physical hardware keys (VolDown=1, VolUp=6, Power=2; HW table entry 2 maps to 8)",
         "signature": "int detect_key(unsigned short keycode)"
       },
       "fastboot_register": {
@@ -249,10 +249,20 @@
         "desc": "Returns pointer to current active A/B slot suffix string ('_a' or '_b')",
         "signature": "const char *get_suffix(void)"
       },
+      "get_current_slot": {
+        "addr": "0xFFFF000050F14A80",
+        "desc": "Returns active A/B slot index (0 for '_a', 1 for '_b')",
+        "signature": "int get_current_slot(void)"
+      },
       "set_active": {
         "addr": "0xFFFF000050F14AD0",
         "desc": "Updates active boot slot in persistent BCB / misc metadata",
         "signature": "int set_active(const char *suffix)"
+      },
+      "set_boot_mode": {
+        "addr": "0xFFFF000050F46DDC",
+        "desc": "Stores boot mode integer into LK global g_boot_mode (0xFFFF000050F9C9D0)",
+        "signature": "void set_boot_mode(u32 mode)"
       },
       "kernel_decompress": {
         "addr": "0xFFFF000050F0A994",
@@ -417,9 +427,14 @@
     "MT6789_WDT_RESTART": "0x10007008",
     "MT6789_WDT_NONRST_REG": "0x10007020",
     "MT6789_WDT_NONRST_REG2": "0x10007024",
-    "MT6789_DEVAPC_BASE": "0x1000EF00",
+    "MT6789_DEVAPC_BASE": "0x1000E000",
+    "MT6789_DEVAPC_APC_CON": "0x1000EF00",
+    "MT6789_KEYPAD_BASE": "0x10010000",
+    "MT6789_PWRAP_BASE": "0x10026000",
     "MT6789_UART0_BASE": "0x11002000",
+    "MT6789_USB0_BASE": "0x11200000",
     "MT6789_UFSHCI_BASE": "0x11270000",
+    "MT6789_U2PHY0_BASE": "0x11F40000",
     "MT6789_MMSYS_BASE": "0x14000000",
     "MT6789_DISP_OVL0_BASE": "0x14005000",
     "FRAMEBUFFER_PHYS_0": "0xFE007000",
@@ -428,7 +443,7 @@
   "keycodes": {
     "VOL_DOWN": 1,
     "VOL_UP": 6,
-    "POWER": 8
+    "POWER": 2
   },
   "zero_regions": {
     "lk": {

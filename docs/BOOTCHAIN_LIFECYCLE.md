@@ -111,9 +111,9 @@ In MediaTek architectures, the `lk` partition (and `lk_b` on A/B slot devices) i
 |    • target_init()   (0x50F04A2C):                                                               |
 |         - ufs_init()   (Probes UFS 2.2 host controller, mounts LUNs)                             |
 |         - gpt_init()   (Parses GPT headers, block devices online)                                |
-|         - keypad_init() (0x50F04B30: detect_key online: VolDown=1, VolUp=6, Power=8)             |
+|         - keypad_init() (0x50F04B30: detect_key online: VolDown=1, VolUp=6, Power=2)             |
 |    • apps_init()     (0x50F04A40):                                                               |
-|         - App 0: "fastboot" (0x50F99A70 -> entry 0x50F05724): MTU3 USB Fastboot gadget           |
+|         - App 0: "fastboot" (0x50F99A70 -> entry 0x50F05724): MUSB USB Fastboot gadget           |
 |         - App 1: "mt_boot"  (0x50F99A98 -> init 0x50F0C768, entry 0x50F0C87C): Android Boot    |
 |                                                                                                  |
 | 4. mt_boot Pipeline (0xFFFF000050F0C87C -> 0xFFFF000050F0C3D8):                                  |
