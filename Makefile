@@ -4,7 +4,7 @@
 PYTHON ?= python3
 LOKI   ?= ./loki
 
-.PHONY: all help test verify proof deadcode scan-atf scan-pl devices gen-header clean
+.PHONY: all help test verify proof payload pack deadcode scan-atf scan-pl devices gen-header clean
 
 all: verify proof deadcode
 
@@ -16,6 +16,8 @@ help:
 	@echo "  make test          Alias for make all"
 	@echo "  make verify        Validate schemas, headers, and firmware consistency"
 	@echo "  make proof         Build & verify 164-byte proof hook placement"
+	@echo "  make payload       Build Stage-1 LK cave payload (pass DEVICE=...)"
+	@echo "  make pack          Pack verified lk_loki.img with embedded subpartition (FW=..., PAYLOAD=...)"
 	@echo "  make deadcode      Scan hardware strapping & dead-code caves"
 	@echo "  make scan-atf      Scan ARM Trusted Firmware (BL31) vectors & SMCs"
 	@echo "  make scan-pl       Scan MediaTek Preloader (BL2) GFH & USBDL loop"
@@ -32,6 +34,16 @@ verify:
 
 proof:
 	@$(PYTHON) tools/proof/build_proof.py
+
+payload:
+	@$(MAKE) -C payload DEVICE_JSON=$(if $(DEVICE),$(abspath $(DEVICE)),$(abspath devices/mt6789/advan_x1_v5.json)) all
+
+pack:
+	@if [ -z "$(FW)" ] || [ -z "$(PAYLOAD)" ]; then \
+		echo "Usage: make pack FW=/path/to/stock/lk.img PAYLOAD=/path/to/u-boot.bin [DEVICE=devices/mt6789/advan_x1_v5.json] [OUT=build/lk_loki.img]"; \
+		exit 1; \
+	fi
+	@$(PYTHON) loki pack $(if $(DEVICE),$(DEVICE),devices/mt6789/advan_x1_v5.json) --lk $(FW) --payload $(PAYLOAD) -o $(if $(OUT),$(OUT),build/lk_loki.img)
 
 deadcode:
 	@$(PYTHON) tools/capstone/scan_deadcode.py $(FW)

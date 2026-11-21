@@ -49,6 +49,7 @@ make verify FW=/path/to/stock/lk.img
 | `verify` | Validate schemas, C headers, and binary assertions | `./loki verify [device.json] [-f lk.img]` |
 | `gen-header` | Auto-generate C header (`.h`) from device `.json` | `./loki gen-header devices/mt6789/advan_x1_v5.json` |
 | `proof` | Build freestanding proof hook & verify placement | `./loki proof [extracted/00_lk.bin]` |
+| `pack` | Build Stage-1 cave and pack `lk_loki.img` with embedded subpartition (`0x210000`) | `./loki pack devices/mt6789/advan_x1_v5.json --lk lk.img --payload uboot/build/u-boot.bin` |
 
 > [!TIP]
 > You can point `loki` and `make` to your local firmware dump using the `LOKI_FIRMWARE_IMG` environment variable or the `FW=` parameter:
@@ -254,6 +255,21 @@ See [Safe Hook Entry Points & Zero-Region Catalog](docs/HOOK_ENTRY_POINTS.md) an
 
 ---
 
+## Submodules
+
+| Path | Upstream / Role | License |
+|---|---|---|
+| `uboot/` | [`sysretq0/advan-x1-uboot`](https://github.com/sysretq0/advan-x1-uboot) — Clean patch-series port of upstream U-Boot for Advan X1 (MT6789) | GPL-2.0-only |
+| `mainline/` | [`sysretq0/advan-x1-mainline`](https://github.com/sysretq0/advan-x1-mainline) — Clean patch-series mainline Linux port for Advan X1 (MT6789) | GPL-2.0-only |
+
+---
+
+## Credits & Acknowledgments
+
+* **Roger Ortiz (`R0rt1z2`)** — [`liblk`](https://github.com/R0rt1z2/liblk) / **Fenrir** (GPL-3.0): MediaTek `cert2` ASN.1 context `[0]` hash-override OIDs/format and security policy bypass patterns used in [`tools/loki-pack.py`](tools/loki-pack.py).
+
+---
+
 ## License
 
-GPL-3.0-or-later
+GNU General Public License v3.0 or later (`GPL-3.0-or-later`). See [LICENSE](LICENSE) for full terms.

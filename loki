@@ -151,6 +151,35 @@ def cmd_proof(args):
         print("\nPass an extracted 00_lk.bin to verify hook placement, e.g.:")
         print("  ./loki proof extracted/00_lk.bin")
 
+def cmd_pack(args):
+    import subprocess
+    from pathlib import Path
+
+    dev_json = Path(args.device).resolve()
+    dev_name = dev_json.stem
+    cave_bin = Path(args.cave).resolve() if args.cave else (
+        Path(REPO_ROOT) / "build" / "payload" / dev_name / "loki_cave.bin"
+    )
+    if not args.cave:
+        subprocess.run(
+            ["make", "-C", os.path.join(REPO_ROOT, "payload"), f"DEVICE_JSON={dev_json}", "all"],
+            check=True,
+        )
+
+    cmd = [
+        sys.executable,
+        os.path.join(TOOLS_DIR, "loki-pack.py"),
+        "--device", str(dev_json),
+        "--lk", str(Path(args.lk).resolve()),
+        "--cave", str(cave_bin),
+        "--payload", str(Path(args.payload).resolve()),
+        "--out", str(Path(args.output).resolve()),
+    ]
+    if args.unlock_el2:
+        cmd.append("--unlock-el2")
+    subprocess.run(cmd, check=True)
+
+
 def cmd_devices(args):
     devices_dir = os.path.join(REPO_ROOT, "devices")
     print("=" * 68)
@@ -241,6 +270,15 @@ def main():
     p_proof = sub.add_parser("proof", help="Build/verify freestanding proof hook placement")
     p_proof.add_argument("binary", nargs="?", help="Path to extracted 00_lk.bin")
 
+    # pack
+    p_pack = sub.add_parser("pack", help="Build Stage-1 cave and pack verified lk_loki.img with embedded subpartition")
+    p_pack.add_argument("device", help="Path to device JSON profile (e.g. devices/mt6789/advan_x1_v5.json)")
+    p_pack.add_argument("--lk", required=True, help="Path to pristine stock lk.img")
+    p_pack.add_argument("--payload", required=True, help="Path to standalone chainload binary (e.g. u-boot.bin)")
+    p_pack.add_argument("--cave", help="Optional prebuilt loki_cave.bin (default: build from payload/)")
+    p_pack.add_argument("-o", "--output", default="build/lk_loki.img", help="Output lk_loki.img path")
+    p_pack.add_argument("--unlock-el2", action="store_true", help="Patch bl2_ext SPSR drop from EL1h to EL2h (KVM)")
+
     # devices
     sub.add_parser("devices", help="List all supported device profiles in the repository")
 
@@ -260,6 +298,7 @@ def main():
         "gen-header": cmd_gen_header,
         "init": cmd_init,
         "proof": cmd_proof,
+        "pack": cmd_pack,
         "devices": cmd_devices,
     }
     dispatch[args.command](args)
